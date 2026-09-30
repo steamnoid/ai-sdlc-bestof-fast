@@ -48,8 +48,16 @@
         required
       />
       <button type="submit" id="start-a-run">start a run</button>
+      <button type="button" id="ask-for-a-briefing" class="is-secondary">
+        what should this repository be given?
+      </button>
       <p class="what-happened" id="what-happened-to-the-request" role="status"></p>
     </form>
+
+    <aside class="a-briefing" id="a-briefing" hidden aria-label="what this repository could be given">
+      <button class="close-the-story" id="close-the-briefing" aria-label="close">×</button>
+      <div id="the-briefing-body"></div>
+    </aside>
 
     <main class="the-board" id="the-board" aria-label="tickets by where they are"></main>
 

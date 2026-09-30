@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 10 tests, 3s, no network, no model, no credential, no container
+uv run pytest -q     # 17 tests, 3s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -160,6 +160,59 @@ LangGraph's own.
 
 ---
 
+## The other half: a repository briefs itself
+
+**A run answers a sentence somebody typed. A briefing answers "what should this repository be
+given",** which is a different kind of question — nothing in it came from the deployment, and a
+model that is not shown the repository's own files will invent the work.
+
+```bash
+AISDLC_CREATIVE_MODE=on uv run aisdlc serve
+```
+
+Then press **what should this repository be given?**. It clones read-only, forks nothing, needs no
+credential, and takes two to three minutes — which the button says, because a button that appears
+to have done nothing is worse than one that says it is waiting.
+
+A real briefing of `paligakrzychu/wellbeing-tracker-public`, 2m42s, five opportunities, every
+citation proved against the clone:
+
+> **[1] Replace the ticket-named end-to-end specs with tests named for the behaviour they assert**
+> — QA — *"A check enumerates tests/e2e and fails on any spec whose file name does not match"*
+>
+> **[3] Assert the authentication contract in `tests/unit` rather than only through the browser**
+> — SEC — *"a test calls the login route handler and asserts the `Set-Cookie` header carries
+> `HttpOnly`…"*
+>
+> **[4] Check that `web-app/schema.sql` and the queries the application actually issues agree**
+> — DEV — *"the integration test applies `schema.sql` to an empty database, inserts a row…"*
+
+and what it could not settle, which is the half that matters:
+
+> Whether the hex-named spec files in `tests/e2e` carry their ticket meaning in the spec bodies or
+> in `tests/e2e/mapping.ts`
+
+**A person then picks, and the picks become work.** Filing is a `POST` to GitHub and there is no
+undo, so it is a second call carrying indices rather than a briefing that files itself: a briefing
+which became tickets without anybody choosing would be a backlog this system invented. Filing is
+idempotent against the opportunity's own words, because a briefing retried because its answer was
+slow is a briefing retried for a reason that happens.
+
+**And what a real briefing found, twice, about the same model on the same repository:**
+
+| | first briefing | after the paths were listed |
+|---|---|---|
+| the repository it described | *"a small web application… `src/App.jsx`"* — a React app the repository is not | *"a Next.js web application… cookie-session auth"*, which is what it is |
+| citations | `src/App.jsx` × 4 — **a path the repository does not have** | 31 real files, every one proved |
+| opportunities | 0, after the refusal corrected it | 5, specific enough to file |
+
+The first briefing invented `src/App.jsx` in all four opportunities. **Nothing caught it, because
+the check read `evidence_files` — a field the model cannot write — and an empty list proves
+nothing.** The check now reads what the model wrote, and the prompt lists the sixty paths a
+citation may name, which turns citing from a recall into a lookup.
+
+---
+
 ## Where this came from
 
 This is an assembly of two half-products that are each other's missing half, and being explicit
@@ -202,9 +255,6 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 
 Stated rather than left to be discovered.
 
-- **Creative mode.** `ai-sdlc-bestof` has a repository brief itself and file its own issues. It
-  is ~500 lines of unported code that nothing would reach in the first hour, and it was left out
-  in favour of proving the pipeline reasons for real. It is the first thing to add.
 - **The supervisor has never run on a real run in this repository.** Both real runs were
   answered by a policy and neither stage refused, so `supervise_a_repair` is carried across
   unexercised. The engine's own runs exercised it; this repository's have not.
@@ -216,6 +266,11 @@ Stated rather than left to be discovered.
   board invited a decision on a gate that would then answer `410`, which is a button that
   discards what is pressed into it. Making the memory durable is a real change with a real cost;
   making the board stop lying about not having one was the part that was owed today.
+- **Nobody has filed a real briefing.** The filing path is proven with a stand-in for GitHub's
+  issue API, and the four refusals around it were checked against a live server against a real
+  briefing — but opening five issues on a third party's public repository is an outward-facing
+  write with no undo, so it is the one thing left deliberately untriggered. Start a server with
+  `AISDLC_CREATIVE_MODE=on`, press the button, and tick the boxes.
 - **Authentication.** There is none. Anybody who can reach `127.0.0.1:842` can start a run on a
   real repository and answer every gate on it. The loopback address is the whole of the
   boundary, and a deployment that needs it exposed has to put its own authentication in front.
@@ -225,9 +280,8 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships two test files, and they are the
-  end-to-end one and the one holding the two defects a real run found, because those are the
-  claims being made. The engine's own suite is where the per-agent contracts are proven, and it
+  end-to-end tests were not copied. This repository ships three test files — the end-to-end run,
+  the two defects a real run found, and the briefing — because those are the claims being made. The engine's own suite is where the per-agent contracts are proven, and it
   still exists in `ai-sdlc-os`.
 - **The quality gates the engine was built under.** Strict TDD, the readability guards, the
   glossary guard, the per-cycle commit discipline, `mypy --strict`, the e2e and container tiers.

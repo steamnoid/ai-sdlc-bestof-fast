@@ -28,6 +28,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from aisdlc.agents.brief_this_repository import Brief
 from aisdlc.application.a_run_being_assembled import ThisRunCannotBeAssembledError
 from aisdlc.application.the_runs_this_process_is_holding import (
     AWorkItemIsAlreadyBeingHeldError,
@@ -43,6 +44,16 @@ from aisdlc.approval.approval_gate import (
     NotAtTheApprovalGateError,
     record_the_decision,
 )
+from aisdlc.creative.a_repository_briefing_itself import (
+    ABriefingSomebodyAskedFor,
+    APicksSomebodyMade,
+    NotAnOpportunityInThisBriefingError,
+    WhatABriefingFound,
+    a_repository_briefed_itself,
+    filing_the_picks_a_person_made,
+    the_issue_opener_this_deployment_has,
+)
+from aisdlc.creative.is_creative_mode_on import ACreativeSettingThatIsNotOnError
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.store.the_board_reads import (
@@ -166,8 +177,17 @@ def _a_work_item_id_for(repository: Repository, asked_for: str) -> str:
     return f"{repository.name}-{the_slug}-{the_moment:%Y%m%d-%H%M%S}"
 
 
+# Briefings this process is holding, by id. **In memory, like the runs, and for the same
+# reason** — a briefing is a proposal held until a person picks from it, and nothing durable is
+# written until then. Asking again re-asks the model and produces a fresh list, which is why an
+# index from an earlier briefing is refused rather than silently applied to a different one.
+_the_briefings: dict[str, WhatABriefingFound] = {}
+
+
 def the_api_over(
-    a_register: sqlite3.Connection, the_runs: TheRunsThisProcessIsHolding
+    a_register: sqlite3.Connection,
+    the_runs: TheRunsThisProcessIsHolding,
+    a_briefing: Brief | None = None,
 ) -> FastAPI:
     """The API for one register and the runs this process is holding, and the board it serves.
 
@@ -427,6 +447,94 @@ def the_api_over(
             "artifact_id": the_question[0],
             "artifact_version": the_question[1],
             "approved": the_decision.approved,
+        }
+
+    @the_app.post("/api/briefings")
+    def a_briefing_was_asked_for(
+        asked_for: ABriefingSomebodyAskedFor,
+    ) -> dict[str, object]:
+        """Read this repository and say what work it could be given.
+
+        **This is the other half of the product, and it answers a different question from
+        `POST /api/runs`.** That one takes a sentence somebody typed. This one takes a repository
+        and asks it what it should be given, and it clones read-only, forks nothing and needs no
+        credential — so a machine with no `GITHUB_TOKEN` can be asked this and is only refused
+        when somebody chooses to file something.
+
+        **It returns a list, not a decision.** Nothing is filed and no card appears: a briefing
+        that became tickets without anybody choosing would be a backlog this system invented. The
+        picks are a second call, and the hold in between is a person.
+
+        **A briefing that found nothing is a 200 with an empty list**, because "this repository
+        has nothing worth doing" is a true sentence and the most useful thing a briefing can
+        conclude. It is not a fault, and it is not a reason to invent three opportunities so the
+        board is not empty.
+        """
+        the_repository = Repository(
+            owner=asked_for.repository_owner, name=asked_for.repository_name
+        )
+        try:
+            the_briefing = a_repository_briefed_itself(the_repository, a_briefing)
+        except ACreativeSettingThatIsNotOnError as not_on:
+            raise HTTPException(status_code=400, detail=str(not_on)) from not_on
+        except Exception as it_could_not_brief:
+            raise HTTPException(
+                status_code=503,
+                detail=f"this repository could not be briefed: {it_could_not_brief}",
+            ) from it_could_not_brief
+
+        _the_briefings[the_briefing.briefing_id] = the_briefing
+
+        return {
+            "briefing_id": the_briefing.briefing_id,
+            "about": the_briefing.about.address,
+            "what_this_repository_is": the_briefing.what_this_repository_is,
+            "opportunities": [
+                an_opportunity.model_dump(mode="json")
+                for an_opportunity in the_briefing.opportunities
+            ],
+            "what_the_briefing_could_not_settle": the_briefing.what_the_briefing_could_not_settle,
+        }
+
+    @the_app.post("/api/briefings/{briefing_id}/picks")
+    def the_picks_a_person_made_were_posted(
+        briefing_id: str, picks: APicksSomebodyMade
+    ) -> dict[str, object]:
+        """File the opportunities this person chose, and put each one on the board as a work item.
+
+        **Indices and not the opportunities, because choosing and writing are different acts.** A
+        browser that sent the whole opportunity back could choose what the opportunity *says* by
+        editing it, and the ticket that became would be one nobody read. The words are the
+        briefing's; the browser chooses among them by number.
+
+        **An index that is not in the briefing is refused by name and nothing is filed at all.**
+        Filing two of three is a person who was told they chose three, and a briefing's
+        opportunities are renumbered every time it is asked for — so the usual cause is an index
+        carried over from an earlier briefing, and saying that is more use than a 422.
+        """
+        the_briefing = _the_briefings.get(briefing_id)
+        if the_briefing is None:
+            raise HTTPException(
+                status_code=410,
+                detail=(
+                    f"{briefing_id} is not a briefing this process is holding. A briefing is held "
+                    "in memory like a run, so a process that has restarted has none of them — ask "
+                    "for the briefing again and pick from the new one"
+                ),
+            )
+
+        try:
+            the_filing = filing_the_picks_a_person_made(
+                the_briefing, picks.which, the_issue_opener_this_deployment_has()
+            )
+        except NotAnOpportunityInThisBriefingError as not_one:
+            raise HTTPException(status_code=400, detail=str(not_one)) from not_one
+
+        return {
+            "briefing_id": the_filing.briefing_id,
+            "how_many_were_found": the_filing.how_many_opportunities_were_found,
+            "how_many_became_filings": the_filing.how_many_became_filings,
+            "repository": the_filing.repository.address,
         }
 
     @the_app.get("/api/runs/{work_item_id}/events")

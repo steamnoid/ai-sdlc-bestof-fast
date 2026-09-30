@@ -1,3 +1,168 @@
+// **The other question, and the other half of the product.** A run answers a sentence somebody
+// typed; a briefing answers "what should this repository be given", which is a different question
+// because nothing in it came from the deployment. It clones read-only, forks nothing, and takes
+// two to three minutes — so the button says so rather than appearing to have done nothing.
+const theBriefingPanel = document.getElementById("a-briefing");
+const theBriefingBody = document.getElementById("the-briefing-body");
+const askForABriefing = document.getElementById("ask-for-a-briefing");
+
+askForABriefing.addEventListener("click", async () => {
+  askForABriefing.disabled = true;
+  whatHappenedToTheRequest.textContent = "reading the repository — this takes a couple of minutes";
+  whatHappenedToTheRequest.className = "what-happened is-working";
+
+  const answer = await fetch("/api/briefings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      repository_owner: document.getElementById("repository-owner").value.trim(),
+      repository_name: document.getElementById("repository-name").value.trim(),
+    }),
+  });
+
+  askForABriefing.disabled = false;
+  if (!answer.ok) {
+    const why = await answer.json().catch(() => ({ detail: "the server did not say why" }));
+    whatHappenedToTheRequest.textContent = why.detail || "the repository was not briefed";
+    whatHappenedToTheRequest.className = "what-happened is-refused";
+    return;
+  }
+
+  const theBriefing = await answer.json();
+  whatHappenedToTheRequest.textContent =
+    theBriefing.opportunities.length === 0
+      ? "this repository has nothing worth doing"
+      : `${theBriefing.opportunities.length} opportunities — pick the ones you want`;
+  whatHappenedToTheRequest.className = "what-happened is-working";
+  drawTheBriefing(theBriefing);
+});
+
+function drawTheBriefing(theBriefing) {
+  theBriefingPanel.hidden = false;
+  theBriefingBody.replaceChildren();
+
+  const theHeading = document.createElement("h2");
+  theHeading.textContent = "what this repository could be given";
+  theBriefingBody.append(theHeading);
+
+  const whatItIs = document.createElement("p");
+  whatItIs.className = "where-it-came-from";
+  whatItIs.textContent = theBriefing.what_this_repository_is;
+  theBriefingBody.append(whatItIs);
+
+  if (theBriefing.opportunities.length === 0) {
+    // **Said as a finding and not as an error.** A repository in good shape has nothing worth
+    // doing, and a briefing that says so is the most useful thing it can conclude. There is
+    // nothing to pick and nothing to apologise for.
+    const nothing = document.createElement("p");
+    nothing.className = "an-opportunity";
+    nothing.textContent =
+      "This briefing found nothing worth doing. That is a result, not a failure — a repository in good shape has nothing to be given, and this system is not going to invent work so the board is not empty.";
+    theBriefingBody.append(nothing);
+  }
+
+  for (const [which, anOpportunity] of theBriefing.opportunities.entries()) {
+    theBriefingBody.append(anOpportunityIn(which, anOpportunity));
+  }
+
+  if (theBriefing.what_the_briefing_could_not_settle.length) {
+    theBriefingBody.append(aHeading("what the briefing could not settle"));
+    const theList = document.createElement("ul");
+    theList.className = "a-said";
+    for (const aSentence of theBriefing.what_the_briefing_could_not_settle) {
+      const anItem = document.createElement("li");
+      anItem.textContent = aSentence;
+      theList.append(anItem);
+    }
+    theBriefingBody.append(theList);
+  }
+
+  if (theBriefing.opportunities.length) {
+    theBriefingBody.append(thePickerIn(theBriefing));
+  }
+}
+
+function anOpportunityIn(which, anOpportunity) {
+  const aCard = document.createElement("div");
+  aCard.className = "an-opportunity";
+
+  const aLabel = document.createElement("label");
+  aLabel.className = "the-pick";
+  const aCheckbox = document.createElement("input");
+  aCheckbox.type = "checkbox";
+  aCheckbox.id = `pick-${which}`;
+  aCheckbox.value = String(which);
+  const aWhat = document.createElement("span");
+  aWhat.textContent = anOpportunity.what_could_be_done;
+  aLabel.append(aCheckbox, aWhat);
+  aCard.append(aLabel);
+
+  for (const [aHeadingText, theText] of [
+    ["Why it is worth doing", anOpportunity.why_it_is_worth_doing],
+    ["How we would know it worked", anOpportunity.how_it_would_be_known_to_have_worked],
+    ["Which discipline owns it", anOpportunity.the_discipline_that_owns_it],
+    ["The risk", anOpportunity.the_risk_of_it],
+  ]) {
+    const aPart = document.createElement("p");
+    aPart.className = "a-field";
+    const aName = document.createElement("strong");
+    aName.textContent = `${aHeadingText}. `;
+    aPart.append(aName, theText);
+    aCard.append(aPart);
+  }
+
+  const theFiles = document.createElement("p");
+  theFiles.className = "a-field the-files";
+  theFiles.textContent = `Shown by: ${anOpportunity.the_files_that_show_this.join(", ")}`;
+  aCard.append(theFiles);
+
+  return aCard;
+}
+
+function thePickerIn(theBriefing) {
+  const theButton = document.createElement("button");
+  theButton.className = "file-the-picks";
+  theButton.textContent = "file the ones I picked";
+  theButton.disabled = true;
+  theButton.addEventListener("click", () => fileThePicks(theBriefing, theButton));
+  return theButton;
+}
+
+async function fileThePicks(theBriefing, theButton) {
+  const which = [...document.querySelectorAll(".the-pick input:checked")].map(
+    (aCheckbox) => Number(aCheckbox.value)
+  );
+  if (!which.length) {
+    theButton.textContent = "tick the ones you want first";
+    return;
+  }
+
+  theButton.disabled = true;
+  theButton.textContent = "filing…";
+  const answer = await fetch(`/api/briefings/${theBriefing.briefing_id}/picks`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ which }),
+  });
+
+  theButton.disabled = false;
+  if (!answer.ok) {
+    const why = await answer.json().catch(() => ({ detail: "the server did not say why" }));
+    theButton.textContent = why.detail || "nothing was filed";
+    return;
+  }
+
+  // **The count, and what it means.** A person who ticked three and sees "2 of 3 filed" is being
+  // told a fact; one who sees "3 opportunities" is being told nothing about what happened.
+  const filed = await answer.json();
+  theButton.textContent = `${filed.how_many_became_filings} filed — they are on the board now`;
+  refresh();
+}
+
+document.getElementById("close-the-briefing").addEventListener("click", () => {
+  theBriefingPanel.hidden = true;
+});
+
 // The board, drawn from what the API says and never from anything computed here.
 //
 // **The columns come from the API.** A board that assembled its own columns in JavaScript would

@@ -289,3 +289,48 @@ h3.a-heading { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07e
 .a-said { list-style: none; padding: 0; margin: 0; font-size: 13px; }
 .a-said li { padding: 4px 0; border-bottom: 1px solid var(--zinc-100); display: flex; gap: 10px; }
 .a-said .when { color: var(--zinc-400); font-variant-numeric: tabular-nums; flex: none; width: 62px; }
+
+/* The briefing panel: what a repository could be given, and the picker that becomes work.
+   **A separate panel and not a card on the board, because a briefing is not a work item.** It has
+   no stage, no gate and no agent, and putting it among the columns would be a thing on the board
+   that nothing will ever move. */
+.a-briefing {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(680px, 92vw);
+  overflow-y: auto;
+  padding: 28px 32px 64px;
+  background: #fff;
+  border-left: 1px solid var(--zinc-200);
+  box-shadow: -8px 0 24px rgb(24 24 27 / 8%);
+}
+.a-briefing h2 { margin: 0 0 6px; font-size: 18px; }
+.an-opportunity {
+  margin: 18px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--zinc-200);
+  border-radius: var(--a-card);
+  background: var(--zinc-50);
+}
+/* **The tick and the text are one label, and the tick is not first.** The whole opportunity is
+   what a person is choosing, and a small box before a paragraph of prose reads as a formality
+   attached to a title rather than as the decision itself. */
+.the-pick { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; cursor: pointer; }
+.the-pick input { margin-top: 3px; }
+.a-field { margin: 8px 0 0; font-size: 13px; color: var(--zinc-600); }
+.a-field strong { color: var(--zinc-800); }
+.the-files { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--zinc-500); }
+.file-the-picks {
+  width: 100%;
+  margin-top: 18px;
+  padding: 11px 16px;
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: var(--a-card);
+  background: var(--zinc-900);
+  color: #fff;
+  cursor: pointer;
+}
+.file-the-picks:disabled { background: var(--zinc-400); cursor: progress; }
+.is-secondary { background: #fff; color: var(--zinc-800); border: 1px solid var(--zinc-300); }

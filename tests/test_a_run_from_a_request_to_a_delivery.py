@@ -453,9 +453,21 @@ def test_a_refusal_ends_a_run_and_leaves_the_reason_on_the_card(
             json={"approved": True, "decided_by": "pikuniu", "reason": "it is right"},
         )
 
-        _wait_until_the_gate_is_asking(the_board, the_work_item_id, _answered_artifact_ids(
-            the_board, the_work_item_id
-        ))
+        # **The set of gates this test has answered, and not the set the record holds.** The
+        # record is written by the run's own thread, so a set read from it at the moment of the
+        # wait can be a gate behind: the answer was posted and the run has not recorded it yet,
+        # so the set is empty, the pending question is gate one, and the wait returns at once on
+        # a question the run is about to clear. The test knows what it posted, and that is a
+        # fact about the test rather than a fact about a race.
+        already_answered: set[str] = set()
+        first = _wait_until_the_gate_is_asking(the_board, the_work_item_id, already_answered)
+        already_answered.add(first["artifact_id"])
+        the_board.post(
+            f"/api/runs/{the_work_item_id}/decisions",
+            json={"approved": True, "decided_by": "pikuniu", "reason": "it is right"},
+        )
+
+        _wait_until_the_gate_is_asking(the_board, the_work_item_id, already_answered)
         refused = the_board.post(
             f"/api/runs/{the_work_item_id}/decisions",
             json={
@@ -602,17 +614,6 @@ def _wait_until_the_gate_is_asking(
         lambda: _a_question_nobody_has_answered(the_board, work_item_id, already_answered),
         f"{work_item_id} never reached a gate that was still waiting",
     )
-
-
-def _answered_artifact_ids(the_board: TestClient, work_item_id: str) -> set[str]:
-    """Every artifact a decision already names, read off the record rather than remembered.
-
-    **Read and not tracked**, so a caller that answers a gate and then waits for the next one
-    cannot disagree with the board about what has been answered. The two are the same fact and
-    the record is where it lives.
-    """
-    the_story = the_board.get(f"/api/runs/{work_item_id}").json()
-    return {a_gate["artifact_id"] for a_gate in the_story["gates"]}
 
 
 def _a_question_nobody_has_answered(

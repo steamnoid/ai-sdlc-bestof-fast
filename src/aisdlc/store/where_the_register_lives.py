@@ -27,7 +27,7 @@ from pathlib import Path
 
 WHERE_THE_REGISTER_LIVES_BY_DEFAULT = "aisdlc.sqlite3"
 
-_the_lock = threading.Lock()
+_the_lock = threading.RLock()
 _the_connection: sqlite3.Connection | None = None
 
 
