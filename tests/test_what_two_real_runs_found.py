@@ -25,18 +25,25 @@ from __future__ import annotations
 
 import ast
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.agents.plan_the_change import _every_test_is_where_the_suite_will_look_for_it
+from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.inspect_the_repository import (
     an_inspection_of,
     an_inspection_of_the_code,
 )
 from aisdlc.tools.the_project_directory import where_projects_live
+
+# The repository the fixture near the end of this file clones. Named here rather than built in
+# each test, because the three tests that use it are about the same thing and a repository each
+# invented would be one each could be wrong about.
+_A_REPOSITORY = Repository(owner="an", name="owner")
 
 
 @pytest.fixture
@@ -219,9 +226,7 @@ def test_the_analyst_is_told_about_the_files_it_was_not_shown() -> None:
     )
 
 
-def _a_repository_for_the_prompt():
-    from aisdlc.domain.repository import Repository
-
+def _a_repository_for_the_prompt() -> Repository:
     return Repository(owner="an", name="owner")
 
 
@@ -498,3 +503,185 @@ def test_a_run_this_process_has_forgotten_is_said_to_have_been_forgotten(
         "at its gate in the register and the question is pending — so nothing but the missing "
         "run can refuse it, and a refusal for any other reason would be blaming the wrong thing"
     )
+
+
+def test_a_citation_must_be_a_file_the_agent_was_shown(
+    a_clone_of_a_real_repository: ClonedRepository,
+) -> None:
+    """A file that exists in the clone is refused when the inspection did not contain it.
+
+    **The check that a real run's gate did by hand.** A discovery report on a change to a
+    repository's Dockerfile said the Dockerfile's *"contents are not shown"* and then cited the
+    Dockerfile as evidence with a blob link, and the gate refused it for exactly that
+    inconsistency — *"every evidence_files entry must correspond to a file whose contents were
+    inspected"*. The engine proved the citation was a file of the clone, which it was, and that
+    said nothing about whether the model had read it, which it had not.
+
+    **Both refusals are exercised here, and they are different questions.** A path that is not in
+    the clone is a link to nowhere. A path that is in the clone but was not in the inspection is a
+    link to somewhere the report has not been — and the report saying so in one field while
+    claiming it in another is worse, because the claim is what a reader acts on.
+    """
+    from aisdlc.agents.discover_the_repository import (
+        CitedFileNotFoundError,
+        _the_cited_files_that_are_in,
+        _the_paths_the_inspection_showed,
+    )
+    from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
+
+    a_repository = Repository(owner="an", name="owner")
+    the_clone = a_clone_of_a_real_repository
+    what_was_shown = _the_paths_the_inspection_showed(an_inspection_of_the_code(the_clone))
+
+    # A file of the clone that the inspection did not show: the dotfiles, which no name in the
+    # selection matches and which no suffix in the source list carries.
+    a_file_that_was_withheld = ".gitignore"
+    assert (the_clone.path / a_file_that_was_withheld).is_file(), (
+        "the fixture repository has to hold a file the inspection withholds, or this test is "
+        "about the refusal for a file that is not there — which the other check already covers"
+    )
+    assert a_file_that_was_withheld not in what_was_shown, (
+        "the inspection is showing this file, so there is nothing here for the new check to catch"
+    )
+
+    with pytest.raises(CitedFileNotFoundError) as refused:
+        _the_cited_files_that_are_in(
+            the_clone, [a_file_that_was_withheld], a_repository, what_was_shown
+        )
+
+    assert "was not shown" in str(refused.value) or "does not contain it" in str(refused.value), (
+        f"the refusal names the wrong thing: {refused.value}"
+    )
+
+    # And a file that was shown is accepted, or the check would be refusing everything.
+    a_file_that_was_shown = "Dockerfile"
+    assert a_file_that_was_shown in what_was_shown
+    assert (
+        _the_cited_files_that_are_in(
+            the_clone, [a_file_that_was_shown], a_repository, what_was_shown
+        )
+        is not None
+    )
+
+
+def test_a_file_named_without_an_extension_is_still_shown_to_a_model(
+    a_clone_of_a_real_repository: ClonedRepository,
+) -> None:
+    """A `Dockerfile` carries no suffix, and the suffix filter used to exclude exactly these.
+
+    **A real run refused an architecture report for never having opened the Dockerfile.** The
+    source-suffix list exists to exclude lockfiles, images and data, and "no extension" is not a
+    suffix it knows — so the two files that describe how a repository is built and run were
+    invisible to every agent in this system, while a real change to one was being asked for.
+    """
+    from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
+
+    the_inspection = an_inspection_of_the_code(a_clone_of_a_real_repository)
+
+    for a_file_named_without_an_extension in ("Dockerfile",):
+        assert a_file_named_without_an_extension in the_inspection, (
+            f"{a_file_named_without_an_extension} is not in the inspection, so a run asked to "
+            "change it is being asked to reason about a file nobody showed it — which is the "
+            "refusal a real run's gate gave, and the reason it was given"
+        )
+    assert "HEALTHCHECK" in the_inspection, (
+        "the Dockerfile is in the inspection by name but its contents are not, so the file is "
+        "named and unread — the shape of a citation a report cannot back"
+    )
+
+
+def test_one_inspection_built_for_one_consumer_is_not_handed_to_another(
+    a_clone_of_a_real_repository: ClonedRepository,
+) -> None:
+    """Every reasoning agent reads the same inspection, and it contains code rather than a listing.
+
+    **The mistake was made twice and then a third time by the same reasoning.** The inspection
+    began as a listing, a manifest and a README because a discovery report is a summary of a
+    repository's *shape*. The security analyst was then wired to it and reasoned from filenames,
+    and a gate refused the report. The fix named the selection after the security question and
+    applied it to everyone, so a run asked to change a Dockerfile was never shown the Dockerfile,
+    and a gate refused that too. **The selection is now what a *change* tends to touch**, and
+    this test holds that the three agents which need code are all given it.
+    """
+    from aisdlc.agents import discover_the_repository
+    from aisdlc.tools.inspect_the_repository import an_inspection_of, an_inspection_of_the_code
+
+    assert discover_the_repository.an_inspection_of_the_code is an_inspection_of_the_code, (
+        "the discovery agent reads a listing again, so a discovery report says a file's contents "
+        "are not shown and then cites it — which is what a real run's gate refused"
+    )
+
+    with_code = an_inspection_of_the_code(a_clone_of_a_real_repository)
+    shape_only = an_inspection_of(a_clone_of_a_real_repository)
+
+    # **About the contents and not the size.** A ratio was the first version of this assertion
+    # and it is a claim about a repository rather than about the selection: this fixture holds
+    # three files, so the two inspections are the same size whether or not the code is in one.
+    # The claim is that a file's *contents* are reachable through one and not the other.
+    assert "HEALTHCHECK" in with_code, (
+        "the inspection with code in it does not contain the Dockerfile's contents, so the code "
+        "is not reaching anybody and the difference between the two inspections is a name"
+    )
+    assert "HEALTHCHECK" not in shape_only, (
+        "the shape-only inspection now carries file contents, so it is the inspection with code "
+        "in it under another name — and the two would have to be kept in step"
+    )
+
+
+@pytest.fixture
+def a_clone_of_a_real_repository(tmp_path: Path):
+    """A real clone of a repository made locally, with a `Dockerfile` and a dotfile.
+
+    **Made here rather than pointed at, because these three tests are about what a model is
+    shown** and the only way to know what a model is shown is to build the thing that decides and
+    look at it. It carries the two kinds of file the finding was about: a `Dockerfile`, which
+    carries no suffix and was invisible to the selection, and a `.gitignore`, which exists in the
+    clone and is not in the inspection — so the new citation check has something to catch.
+    """
+
+    from aisdlc.tools.github_client import Addresses
+    from aisdlc.tools.github_clone_repository import (
+        a_repository_to_clone,
+        clone_repository,
+    )
+
+    the_bare = tmp_path / "the-origin.git"
+    the_bare.mkdir()
+    _git(the_bare, "init", "--bare", "--initial-branch=main")
+
+    a_working_copy = tmp_path / "a-working-copy"
+    a_working_copy.mkdir()
+    _git(a_working_copy, "init", "--initial-branch=main")
+    _git(a_working_copy, "config", "user.email", "a-test@example.com")
+    _git(a_working_copy, "config", "user.name", "a test")
+    (a_working_copy / "Dockerfile").write_text(
+        "FROM node:22-bookworm-slim\n"
+        "EXPOSE 3000\n"
+        "HEALTHCHECK --interval=30s --timeout=3s --retries=3 \\\n"
+        "  CMD curl -f http://localhost:3000/ || exit 1\n"
+        "CMD [\"npm\", \"start\"]\n",
+        encoding="utf-8",
+    )
+    (a_working_copy / ".gitignore").write_text("node_modules\n", encoding="utf-8")
+    (a_working_copy / "package.json").write_text('{"name": "a-project"}\n', encoding="utf-8")
+    _git(a_working_copy, "add", ".")
+    _git(a_working_copy, "commit", "-m", "the first commit")
+    _git(a_working_copy, "remote", "add", "origin", str(the_bare))
+    _git(a_working_copy, "push", "origin", "main")
+
+    return clone_repository(
+        a_repository_to_clone(
+            _A_REPOSITORY,
+            Addresses(fetch_from=str(the_bare), origin_of_the_code=str(the_bare)),
+            tmp_path / "a-clone",
+        )
+    )
+
+
+def _git(where: Path, *what: str) -> str:
+    what_happened = subprocess.run(
+        ["git", *what], cwd=where, capture_output=True, text=True, check=False
+    )
+    if what_happened.returncode != 0:
+        pytest.fail(f"git {' '.join(what)} in {where} failed: {what_happened.stderr}")
+    return what_happened.stdout

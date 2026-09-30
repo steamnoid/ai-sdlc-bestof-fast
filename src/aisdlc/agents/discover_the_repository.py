@@ -34,7 +34,7 @@ from aisdlc.tools.filesystem_read import (
     the_path_inside_the_project,
 )
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.inspect_the_repository import an_inspection_of
+from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 THE_FIELDS_THE_ANSWER_MAY_NAME = (
     "languages",
@@ -134,7 +134,14 @@ def discover_the_repository(
     A directory is refused the same way a missing file is, because it is the same
     failure: an address that leads nowhere, presented as though it led somewhere.
     """
-    inspection = an_inspection_of(clone)
+    # **The code, not only the shape — the third consumer of the same inspection.** This module
+    # was written when the inspection was a listing, a manifest and a README, and a discovery
+    # report was a summary of a repository's shape; the security analyst was then wired to the
+    # same one and reasoned from filenames, and a run's gate refused the report for it. The
+    # lesson was not "the security analyst needs more" — it was that **one inspection built for
+    # one consumer was being handed to another**, and a real run then refused a discovery report
+    # for citing a `Dockerfile` whose contents the report itself said it had not seen.
+    inspection = an_inspection_of_the_code(clone)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()
@@ -150,7 +157,7 @@ def discover_the_repository(
                     )
                 )
             )
-            return _the_report_about(clone, repository, answer)
+            return _the_report_about(clone, repository, answer, inspection)
         except (CitedFileNotFoundError, ValidationError) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
@@ -159,7 +166,10 @@ def discover_the_repository(
 
 
 def _the_report_about(
-    clone: ClonedRepository, repository: Repository, answer: DiscoveryAnswer
+    clone: ClonedRepository,
+    repository: Repository,
+    answer: DiscoveryAnswer,
+    inspection: str,
 ) -> tuple[DiscoveryReport, DiscoveryAnswer]:
     """The report and the answer it was built from, once every citation is a file of this clone.
 
@@ -177,15 +187,42 @@ def _the_report_about(
         ci_system=answer.ci_system,
         architecture_summary=answer.architecture_summary,
         key_components=answer.key_components,
-        evidence_files=_the_cited_files_that_are_in(clone, answer.evidence_files, repository),
+        evidence_files=_the_cited_files_that_are_in(
+            clone, answer.evidence_files, repository, _the_paths_the_inspection_showed(inspection)
+        ),
         suggested_changes=answer.suggested_changes,
     ), answer
 
 
+def _the_paths_the_inspection_showed(inspection: str) -> str:
+    """Every path the inspection put in front of this agent, as one string to match against.
+
+    **Read out of the inspection rather than kept alongside it**, because the inspection is the
+    thing that decides what the model was shown and a second list is a second thing that can
+    disagree with it. The headings are the paths: the top-level listing is prose, the manifests
+    and the code sections are `## <path>` each, and the closing section is the one this exists
+    to contradict.
+    """
+    return "\n".join(
+        line.removeprefix("## ")
+        for line in inspection.splitlines()
+        if line.startswith("## ")
+    )
+
+
 def _the_cited_files_that_are_in(
-    clone: ClonedRepository, cited: list[str], repository: Repository
+    clone: ClonedRepository, cited: list[str], repository: Repository, was_shown: str = ""
 ) -> list[EvidenceFile]:
-    """The evidence, with every citation first proved to be a file of this clone.
+    """The evidence, every citation proved a file of this clone **and one that was shown**.
+
+    **Two checks and the second is the one a real run needed.** A citation that is not a file of
+    the repository is a link to nowhere. A citation that *is* a file of the repository but was
+    never shown to the model is a link to somewhere — and the report saying so in one field while
+    claiming it in another is worse, because the claim is the one a reader acts on. A run's gate
+    refused exactly that:
+
+        "the report supplies no current interval, no base image … while Dockerfile nonetheless
+         appears in evidence_files with blob links as though they had been read"
 
     The path rule runs before the file check, because the two refusals answer different
     questions and the sharper one is more use to a caller: a URL is a path that leaves the
@@ -209,6 +246,16 @@ def _the_cited_files_that_are_in(
                 "evidence. A report that cites something that is not there is asking a "
                 "reader to click a link that leads nowhere, and the citation is the claim "
                 "the report rests on."
+            )
+
+        if was_shown and evidence.path not in was_shown:
+            raise CitedFileNotFoundError(
+                f"{evidence.path!r} is a file of {repository.owner}/{repository.name}, and this "
+                "report cites it as evidence — but the inspection this agent was shown does not "
+                "contain it, so nothing in this report rests on having read it. A citation is a "
+                "claim that a file was read, and a file that was never shown has not been. The "
+                "inspection ends with a section naming what it withheld; this is that section "
+                "being true."
             )
 
     return addresses

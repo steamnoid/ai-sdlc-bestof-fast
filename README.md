@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 29 tests, 3.5s, no network, no model, no credential, no container
+uv run pytest -q     # 33 tests, 4s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -151,6 +151,34 @@ bug, one module over, never fixed there.
 and the planner produced a plan, which gate 6 refused for its own independent reason — that the
 plan named `vitest.config.ts` without saying what change it needed. The run stopped cleanly,
 `how_it_ended: None`, because a refusal is a decision and not a fault.
+
+**And then four more, from one run each — and a pattern.**
+
+Every one of these is the same shape: **the gate was right and something underneath it was
+wrong.** That is what a real run is for. Four runs, four refusals, and in three of them the
+refusal named the defect precisely enough to fix it.
+
+| what the gate said | what was actually wrong |
+|---|---|
+| *"The report never opens the Dockerfile — the only file this work item actually changes."* | `Dockerfile` carries **no extension**, and the source-suffix filter excluded exactly the files that carry none. A `Dockerfile` and a `Makefile` were invisible to every agent in the system |
+| *"Its one nod to the healthcheck is an inference from the repository's branch name."* | the file selection was named after the **security** question — which fixed the security analyst and was then applied to every agent. A selection framed around one consumer is the wrong selection for the others, and it is now what a *change* tends to touch |
+| *"the suite passed identically with the file present and deleted"* | the implementer wrote the file back byte-for-byte, and that refusal **killed the run** instead of reaching the supervisor — the one refusal where the answer is least in doubt, because the plan named the file and said what to change in it |
+| *"while `Dockerfile` nonetheless appears in `evidence_files` with blob links as though they had been read"* | discovery cites were proved to be **files of the clone** and never checked against **what the model was shown**. A report could say a file's contents were not shown and cite it anyway, and the check that existed could not see it |
+
+The fourth one has a test that bites: a file that genuinely exists in the clone — `.gitignore` —
+is refused because the inspection did not contain it. Before, the existence check passed it.
+
+**A fifth, and it is the one worth having.** Six gates, five approvals, and a refusal at the plan
+that reads like a person who has read the repository:
+
+> The plan names `Dockerfile` as the only file to change and explicitly declares
+> `tests_to_add` as empty, so nothing in this run will ever exercise the healthcheck it is
+> adding. **A `HEALTHCHECK` whose path, port, or interval is wrong does not fail loudly — the
+> container simply reports unhealthy forever** — and this plan contains no build-and-run step
+> confirming the endpoint exists and that the container reaches "healthy".
+
+And it was right: `tests/unit/wellbeingt-17-docker-static.test.ts` asserts `--interval=30s`, so
+the change this run was asked for makes that suite red, and the plan said nothing about it.
 
 **And the repair supervisor ran, for the first time, against a real card.** Three stages hand a
 refusal to it — a plan whose test is in a directory the suite does not collect, a test that
@@ -292,12 +320,15 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 
 Stated rather than left to be discovered.
 
-- **The supervisor has never fired inside a whole run.** It has been asked, by a real model, with
-  a real card and a real refusal, and it answered correctly — but no end-to-end run has reached
-  one of the three refusals on its own. That needs either a change that genuinely makes the suite
-  red or a plan that genuinely names an uncollected directory, and neither is something to ask a
-  model for on purpose; it is twenty minutes per attempt and the outcome is not chosen in
-  advance.
+- **The supervisor has still not fired inside a whole run.** It has been asked, by a real model,
+  with a real card and a real refusal, and it answered correctly — and its routing is now covered
+  for all four refusals that reach it. What has not happened is an end-to-end run tripping one,
+  and the reason is now clear rather than mysterious: **a gate refusal stops the run by design**,
+  and both runs refused at a gate, where the supervisor is deliberately not involved. Reaching a
+  node refusal needs the plan to be *right* and the implementation to be *wrong*, which is not a
+  thing to ask a model for on purpose. `tests/test_the_supervisor_deciding_what_to_repeat.py` and
+  a whole run through the real graph both drive the routing; what neither can do is make a real
+  model misbehave on demand.
 - **A durable checkpointer.** Runs are held in memory, so **a restart loses every parked run**.
   The register, the clone and every artifact survive; the graph's place in the pipeline does
   not. What *is* built is the honesty about it: the API says whether this process is holding a

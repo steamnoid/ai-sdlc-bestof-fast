@@ -647,3 +647,71 @@ def test_the_node_whose_routing_is_checked_is_the_one_the_graph_registers() -> N
         f"the graph registers {the_registered_names}, and the routing this file checks belongs to "
         "a node that is not among them — so the check is about a function nothing calls"
     )
+
+
+def test_a_change_that_writes_nothing_is_handed_to_the_supervisor() -> None:
+    """An implementer that wrote the file back unchanged is the most repairable refusal there is.
+
+    **And it killed the run until a real run found it.** Asked to change the Dockerfile's
+    healthcheck interval, the planner named the Dockerfile and the implementer wrote it back
+    byte-for-byte, keeping `--interval=30s`. That is the refusal this mechanism exists for — the
+    plan was right and named the file, the implementer ignored it, and the answer to "which agent
+    was wrong" is not in doubt — and the run stopped dead, because this node's `except` named
+    only the other refusal.
+
+    The refusal was right and the routing was wrong, which is the combination this repository has
+    now found three times: something the gate did correctly, and an engine underneath it that did
+    not.
+    """
+    from aisdlc.agents.implement_the_plan import AWriteThatChangesNothingError
+    from aisdlc.agents.implementation_plan import ImplementationPlan
+    from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN
+    from aisdlc.graph.apply_node import apply_and_verify_in_this_run
+
+    what_the_plan_asked = ImplementationPlan(
+        files_to_change=["Dockerfile"], tests_to_add=[]
+    )
+    a_state: AgentState = {
+        "work_item": _a_work_item_at_the_delivery_gate(),
+        "projects_root": Path("/nowhere"),
+        "clone": _a_clone_standing_in_for_a_real_one(),
+        "implementation_plan": what_the_plan_asked,
+        "requested_stage": Stage.AWAITING_HUMAN_APPROVAL,
+        "requested_agent": None,
+        "requested_role": Role.DEV,
+        "presented_artifact_id": "VerificationReport",
+        "presented_artifact_version": 1,
+        "decisions": [],
+        "approvals": [],
+        WHAT_STOPPED_THIS_RUN: None,
+    }
+
+    def an_implementer_that_wrote_nothing(*arguments: object) -> object:
+        """The real refusal, raised by the real exception with the real paths."""
+        raise AWriteThatChangesNothingError(["Dockerfile"])
+
+    the_command = apply_and_verify_in_this_run(a_state, an_implementer_that_wrote_nothing)  # type: ignore[arg-type]
+
+    assert isinstance(the_command, Command)
+    assert the_command.goto == "supervise_a_repair", (
+        "an implementer that wrote the file back unchanged stops the run, and it is the one "
+        "refusal where the answer is least in doubt: the plan named the file and said what to "
+        "change in it. A question this system built a reader for is not a question to answer by "
+        "stopping"
+    )
+    assert "Dockerfile" in the_command.update[WHAT_STOPPED_THIS_RUN], (
+        "the refusal handed over does not name the file, so the supervisor is asked to judge "
+        "without knowing which one was left alone"
+    )
+
+
+def _a_clone_standing_in_for_a_real_one() -> object:
+    """A clone the implementer node accepts, built without one being on disk.
+
+    **This node checks that a clone and a plan arrived and nothing else** — the refusal below is
+    raised by the collaborator it is handed, before anything reads the clone. A real checkout
+    would make this test about the fixture rather than about the routing.
+    """
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+
+    return ClonedRepository(path=Path("/nowhere/a-clone"), ref="main", commit="0" * 40)

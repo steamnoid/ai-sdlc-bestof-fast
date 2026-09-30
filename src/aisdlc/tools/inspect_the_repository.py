@@ -66,13 +66,25 @@ A_LIMIT_ON_A_SINGLE_FILE = 20_000
 # security-relevant surface, and small enough that a manifest is not the fourth of it.
 A_LIMIT_ON_THE_WHOLE_INSPECTION = 120_000
 
-# What a file has to be called to be shown to a security analyst. **A name and not a parse,
-# because a name is the only signal available without reading every file in the repository.**
-# Every entry is a word that appears in a filename when a person has put something at risk, and
-# the list is deliberately a list: a parser for JavaScript routes would be a second language
-# implementation in a tool whose job is to choose what to read, and it would be wrong on the
-# eleventh language somebody writes.
-WHAT_A_NAME_SAYS_A_FILE_MAY_CARRY_RISK = (
+# What a file has to be called to be shown to a model reasoning about a repository. **A name and
+# not a parse, because a name is the only signal available without reading every file in the
+# repository.** The list is deliberately a list: a parser for JavaScript routes would be a second
+# language implementation in a tool whose job is to choose what to read, and it would be wrong on
+# the eleventh language somebody writes.
+#
+# **It was a list of security words, and a real run found what that costs.** This inspection
+# existed for discovery, whose job is a repository's shape, and the security analyst was later
+# wired to the same one — so it was handed a directory listing and a `package.json` while being
+# asked to find authentication problems, and a real run's gate refused the report for reasoning
+# from filenames. The words below fixed that and were then applied to *every* consumer, which is
+# the same mistake one level up: a run asked to change the Dockerfile's healthcheck was then
+# never shown the Dockerfile, because `Dockerfile` is not a security word. The architecture
+# analyst said so honestly — it reported no base image, no `HEALTHCHECK` directive and no interval
+# — and the gate refused it for exactly that. **A selection framed around one consumer's question
+# is the wrong selection for the others**, so the list is now what a *change* tends to touch:
+# where security lives, and also what builds, deploys and configures.
+WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER = (
+    # where security lives
     "auth",
     "authenticate",
     "authorization",
@@ -104,6 +116,24 @@ WHAT_A_NAME_SAYS_A_FILE_MAY_CARRY_RISK = (
     "oauth",
     "sanit",
     "validat",
+    # where a build and a deployment are described — **added after a real run refused an
+    # architecture report for never having opened the Dockerfile**, which is the file that
+    # work item was about
+    "dockerfile",
+    "docker-compose",
+    "compose",
+    "makefile",
+    "entrypoint",
+    "deploy",
+    "build",
+    "setup",
+    "requirements",
+    "manifest",
+    "migrat",
+    "seed",
+    "schema",
+    ".env",
+    ".gitignore",
 )
 
 # What a file has to end in to count as source at all. A repository's own `node_modules` and
@@ -154,6 +184,23 @@ DIRECTORIES_THAT_HOLD_SOMEONE_ELSES_CODE = (
 # How deep the search goes. Deep enough to find `web-app/src/app/api/.../route.ts` and shallow
 # enough that a generated tree cannot become the answer on its own.
 HOW_DEEP_THE_SEARCH_GOES = 6
+
+# A file whose name says what it is and carries no extension. **The `Dockerfile` and the
+# `Makefile` are in this list, and a real run refused an architecture report for never having
+# opened one.** The suffix filter above exists to exclude lockfiles, images and data — and it
+# excludes exactly these two, because "no extension" is not a suffix it knows. So extensionless
+# files are decided by name, and a `Dockerfile` is the most consequential file in a repository a
+# deployment is described in.
+FILES_NAMED_WITHOUT_AN_EXTENSION = (
+    "dockerfile",
+    "makefile",
+    "procfile",
+    "license",
+    "notice",
+    "authors",
+    "codeowners",
+    "jenkinsfile",
+)
 
 
 def an_inspection_of(clone: ClonedRepository) -> str:
@@ -210,13 +257,16 @@ def an_inspection_of_the_code(clone: ClonedRepository) -> str:
 
 
 def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]:
-    """The source files whose names say they may hold something risky, and the names of the rest.
+    """The source files whose names say a change might touch them, and the names of the rest.
 
     **Chosen by name and capped by characters, in that order.** A name is the only signal
-    available without reading every file, and a cap is what keeps a large repository from
-    becoming a paste. When the cap is reached the search stops and everything left goes into the
-    "not shown" list — so a truncated inspection says it was truncated rather than looking
-    complete.
+    available without reading every file, and a cap is what keeps a large repository from becoming
+    a paste. When the cap is reached the search stops and everything left goes into the "not
+    shown" list — so a truncated inspection says it was truncated rather than looking complete.
+
+    **The cap bites from the top down, not in an arbitrary order.** Sorted by depth and then by
+    path, so the files nearest the root — which is where a `Dockerfile`, a `Makefile` and a
+    `package.json` live — are the ones that survive it.
     """
     how_many_characters_are_spent = 0
     what_was_shown: list[str] = []
@@ -255,13 +305,15 @@ def _every_source_file_in(inside: Path) -> list[str]:
         its_parts = a_path.relative_to(inside).parts
         if any(a_part in DIRECTORIES_THAT_HOLD_SOMEONE_ELSES_CODE for a_part in its_parts):
             continue
-        if a_path.suffix not in SUFFIXES_THAT_MAY_BE_SOURCE:
-            continue
         if len(its_parts) > HOW_DEEP_THE_SEARCH_GOES:
             continue
 
         its_name = a_path.name.lower()
-        if not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_CARRY_RISK):
+        if a_path.suffix not in SUFFIXES_THAT_MAY_BE_SOURCE and (
+            its_name not in FILES_NAMED_WITHOUT_AN_EXTENSION
+        ):
+            continue
+        if not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER):
             continue
 
         found.append((len(its_parts), str(a_path.relative_to(inside))))
@@ -290,7 +342,7 @@ def _the_text_of(inside: Path, a_path: str) -> str | None:
 
 
 def _the_source_is_below(what_was_shown: list[str]) -> str | None:
-    """The code, under a heading that says the rest of this is the code rather than a summary."""
+    """The code, under a heading saying the rest of this is the code rather than a summary."""
     if not what_was_shown:
         return None
     return "# The code that may carry risk\n\n" + "\n\n".join(what_was_shown)
@@ -312,9 +364,11 @@ def _what_was_not_shown(what_was_not: list[str]) -> str:
 
     return (
         "# What you were not shown\n\n"
-        f"{len(what_was_not)} further source file(s) whose names suggested they may carry risk, "
-        "and which are **not** above. A finding about one of these is a finding about a file "
-        "nobody has shown you, and it has to say so rather than reason from the name:\n\n"
+        f"{len(what_was_not)} further source file(s) whose names suggested a change might touch "
+        "them, and which are **not** above. A finding about one of these is a finding about a "
+        "file nobody has shown you, and it has to say so rather than reason from the name — a "
+        "real run's gate refused an architecture report for exactly that, having reported no "
+        "base image and no healthcheck interval about a Dockerfile it had never been shown:\n\n"
         + "\n".join(f"- `{a_path}`" for a_path in what_was_not[:60])
         + (f"\n- and {len(what_was_not) - 60} more" if len(what_was_not) > 60 else "")
     )
