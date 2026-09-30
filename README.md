@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 17 tests, 3s, no network, no model, no credential, no container
+uv run pytest -q     # 29 tests, 3.5s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -152,7 +152,44 @@ and the planner produced a plan, which gate 6 refused for its own independent re
 plan named `vitest.config.ts` without saying what change it needed. The run stopped cleanly,
 `how_it_ended: None`, because a refusal is a decision and not a fault.
 
-**And one thing a real run showed about the board.** A run spent twenty minutes inside the
+**And the repair supervisor ran, for the first time, against a real card.** Three stages hand a
+refusal to it — a plan whose test is in a directory the suite does not collect, a test that
+passed without the change, a suite that went red — and it reads the card, asks a model, and names
+one of two stages to start again at. Both real runs above were answered by a policy that never
+refused, so none of the three fired; the mechanism was carried across unexercised, and a
+mechanism nobody has watched is a claim.
+
+Asked with the **real card from run 2** — five notes real agents left about a real repository —
+and a real refusal, a real model decided in 6 seconds:
+
+> **the run starts again at: the planner**
+>
+> what has not changed: *No observation has contradicted the requirement that the root
+> `package.json` be asserted, and `vitest.config.ts` still has no include that collects anything
+> under `tests/e2e/WELLBEINGT-201`, so the repository's test runner reads exactly as much of the
+> change as it did on the first attempt.*
+>
+> **`aisdlc-dev-plan`: repeat** — *This is the vacuous-test failure and the plan owns it. The plan
+> named `tests/e2e/WELLBEINGT-201/package-json-typecheck.test.ts` while no include in
+> `vitest.config.ts` reaches it, so the suite passed identically with the file present and
+> deleted.*
+
+It named the planner and only the planner, and its reason is the one the engine's own log records
+from a run two years of work ago: *a plan that lands a test the runner never collects is a plan
+that misunderstood the repository.*
+
+**A refusal is a refusal, and stopping is a refusal too — two different ones.** Every agent told
+to stand down **raises**, because a run that returned quietly reads as a run that finished. An
+agent out of turns raises a *different* error naming `AISDLC_REPEAT_BUDGET`, because a clean stop
+and a judgement the deployment overruled must not look alike in a record. And `0` lifts the
+ceiling rather than forbidding every repeat — which is the opposite of a count, and reading it as
+"no repeats" would make the setting mean two things depending on which agent it was read for.
+
+**A note is written before the supervisor acts, not after.** Every verdict goes on the card,
+including the ones that stand an agent down: a record saying only who repeats cannot be argued
+with afterwards by a reader who disagrees with the planner being sent back.
+
+**One thing a real run showed about the board.** A run spent twenty minutes inside the
 planner and the board said "working" for all of it. The run's own record carries a timestamp on
 every line, so a card now says `on begin_planning_the_change · 20 minutes`. The first version of
 that card read `on __interrupt__`, because when a run parks, the node that last "ran" is
@@ -255,9 +292,12 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 
 Stated rather than left to be discovered.
 
-- **The supervisor has never run on a real run in this repository.** Both real runs were
-  answered by a policy and neither stage refused, so `supervise_a_repair` is carried across
-  unexercised. The engine's own runs exercised it; this repository's have not.
+- **The supervisor has never fired inside a whole run.** It has been asked, by a real model, with
+  a real card and a real refusal, and it answered correctly — but no end-to-end run has reached
+  one of the three refusals on its own. That needs either a change that genuinely makes the suite
+  red or a plan that genuinely names an uncollected directory, and neither is something to ask a
+  model for on purpose; it is twenty minutes per attempt and the outcome is not chosen in
+  advance.
 - **A durable checkpointer.** Runs are held in memory, so **a restart loses every parked run**.
   The register, the clone and every artifact survive; the graph's place in the pipeline does
   not. What *is* built is the honesty about it: the API says whether this process is holding a
@@ -280,8 +320,9 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships three test files — the end-to-end run,
-  the two defects a real run found, and the briefing — because those are the claims being made. The engine's own suite is where the per-agent contracts are proven, and it
+  end-to-end tests were not copied. This repository ships four test files — the end-to-end run,
+  the two defects a real run found, the briefing, and the supervisor — because those are the
+  claims being made. The engine's own suite is where the per-agent contracts are proven, and it
   still exists in `ai-sdlc-os`.
 - **The quality gates the engine was built under.** Strict TDD, the readability guards, the
   glossary guard, the per-cycle commit discipline, `mypy --strict`, the e2e and container tiers.
