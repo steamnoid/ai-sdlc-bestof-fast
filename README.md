@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 3 tests, 2.5s, no network, no model, no credential, no container
+uv run pytest -q     # 10 tests, 3s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -85,6 +85,78 @@ It asserts the things that would be a lie otherwise: that a card exists before t
 anything, that the work item really is at `DONE` when the board says delivered, that a refusal
 leaves one decision and no approval, and that an `aisdlc-` identifier posted as a decider is
 refused with the gate's own sentence.
+
+---
+
+## It has run for real, twice, and both runs found something
+
+Every proof above uses a faked model, which makes it a proof about the wiring and not about the
+product. So the pipeline was pointed at `paligakrzychu/wellbeing-tracker-public` with the
+deployment's real model, a real container and a real fork, and `AISDLC_APPROVAL_POLICY` answering
+the gates unattended.
+
+**Run 1: five gates approved, the sixth refused.** The security analyst was refused for a reason
+no test would ever have produced:
+
+> The report never read the item it was commissioned to review: it states the entire inspection
+> was a top-level listing plus the contents of `package.json` … Six of the seven entries are then
+> speculation from filenames and dependency declarations alone
+
+It was right. The run stopped where it was refused, with the reason on the card.
+
+**Two real defects, both found only by running it.**
+
+**A security analyst shown no source code.** `an_inspection_of` was built for *discovery*, whose
+job is a repository's shape — its own docstring says "Source files are not in it, because a
+discovery report is a summary of a repository's shape and not a copy of its contents" — and the
+security analyst was later wired to the same one. It was therefore asked to find authentication
+and authorization problems while being handed a directory listing and a `package.json`. Now
+`an_inspection_of_the_code` shows the code, chosen by the names security problems live in, and
+**ends by naming what it did not show**. The same model on the same repository then produced:
+
+| before | after |
+|---|---|
+| 7 findings, six reasoning from `Dockerfile`, `.dockerignore` and `bcryptjs` | 7 findings, every one quoting code |
+| 1,434 characters of evidence | 10,835 |
+| coverage gap filed as `informational` | *"I could not verify dependency resolution"* — the model naming the limit of its own evidence |
+
+The first finding after the fix, quoted from the model, at severity **high**:
+
+> `function secret() { return new TextEncoder().encode(process.env.JWT_SECRET ||
+> "dev-secret-change-me"); }` in `web-app/src/lib/auth.js` and the identical helper in
+> `web-app/src/middleware.ts`
+
+A hardcoded JWT secret fallback, in a real public repository, found by this system and delivered
+as a report with every quotation checked back to a file it read.
+
+**A symlinked projects root broke the planner.** `plan_the_change` asked the confinement check
+where a test's directory was, got back a path that had been **resolved**, and compared it against
+a root that had **not**. On any machine where the two spellings differ the comparison raised
+Python's own `ValueError` about a subpath, out of a stage, twenty minutes into a run:
+
+> `'/private/tmp/…/repository/tests' is not in the subpath of '/tmp/…/repository'`
+
+macOS makes `/tmp` a link to `/private/tmp`. **No unit test could have found it**: pytest hands
+out an already-resolved `tmp_path` and every test in the suite ran from one. `filesystem_read`
+already resolved both sides for exactly this reason and says so in its own docstring — the same
+bug, one module over, never fixed there.
+
+**Run 2, with both fixed: the same five gates, and the security gate approved on the evidence.**
+
+> Every finding is anchored to quoted code in a named file (the duplicated
+> `process.env.JWT_SECRET || "dev-secret-change-me"` in `web-app/src/lib/auth.js` and
+> `web-app/src/middleware.ts`, the `||`-short-circuited bcrypt compare …), severities are
+> calibrated
+
+and the planner produced a plan, which gate 6 refused for its own independent reason — that the
+plan named `vitest.config.ts` without saying what change it needed. The run stopped cleanly,
+`how_it_ended: None`, because a refusal is a decision and not a fault.
+
+**And one thing a real run showed about the board.** A run spent twenty minutes inside the
+planner and the board said "working" for all of it. The run's own record carries a timestamp on
+every line, so a card now says `on begin_planning_the_change · 20 minutes`. The first version of
+that card read `on __interrupt__`, because when a run parks, the node that last "ran" is
+LangGraph's own.
 
 ---
 
@@ -113,7 +185,7 @@ neither had:
 - `cli.py` — the two commands.
 - the form on the board, and the run-status line that joins what is on disk to what is in memory.
 
-### Two real bugs found on the way
+### Two more bugs, found by running rather than reading
 
 **`the_lifecycle` took a `plan_the_clone` parameter and one of its own wiring functions ignored
 it**, reading the module constant instead. The parameter was a claim about the function that was
@@ -131,8 +203,11 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 Stated rather than left to be discovered.
 
 - **Creative mode.** `ai-sdlc-bestof` has a repository brief itself and file its own issues. It
-  is ~500 lines of unported code that nothing would reach in the first hour. It comes back
-  second.
+  is ~500 lines of unported code that nothing would reach in the first hour, and it was left out
+  in favour of proving the pipeline reasons for real. It is the first thing to add.
+- **The supervisor has never run on a real run in this repository.** Both real runs were
+  answered by a policy and neither stage refused, so `supervise_a_repair` is carried across
+  unexercised. The engine's own runs exercised it; this repository's have not.
 - **A durable checkpointer.** Runs are held in memory, so **a restart loses every parked run**.
   The register, the clone and every artifact survive; the graph's place in the pipeline does
   not. A run that is waiting for an answer when the process dies is a card on the board that
@@ -143,11 +218,13 @@ Stated rather than left to be discovered.
 - **A browser test tier.** The UI is served and the JSON it renders is proven; nothing drives a
   real browser. The two defects the board had when it arrived — a refused gate drawn in the
   colour and the word of an approved one, and no way to start a run at all — were found by
-  reading the source, and the first is fixed.
+  reading the source, and the first is fixed. The third was found by looking at a real card, which
+  is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships one test file, and it is the
-  end-to-end one, because that is the claim being made. The engine's own suite is where the
-  per-agent contracts are proven, and it still exists in `ai-sdlc-os`.
+  end-to-end tests were not copied. This repository ships two test files, and they are the
+  end-to-end one and the one holding the two defects a real run found, because those are the
+  claims being made. The engine's own suite is where the per-agent contracts are proven, and it
+  still exists in `ai-sdlc-os`.
 - **The quality gates the engine was built under.** Strict TDD, the readability guards, the
   glossary guard, the per-cycle commit discipline, `mypy --strict`, the e2e and container tiers.
   This repository was assembled for speed and carries one test, `ruff`, and a non-strict `mypy`.

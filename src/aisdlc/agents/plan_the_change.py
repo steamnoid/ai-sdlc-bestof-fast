@@ -434,7 +434,21 @@ def _every_test_is_where_the_suite_will_look_for_it(
 
     for a_test in plan.tests_to_add:
         where = the_path_inside_the_project(a_path_in_the_project(clone.path, a_test))
-        its_directory = str(where.parent.relative_to(clone.path))
+        # **Both sides resolved, and that is the whole fix.** `the_path_inside_the_project`
+        # resolves what it returns — it has to, to decide containment — so `where` comes back as
+        # the real path. Comparing it against `clone.path` unresolved compares a resolved path
+        # with an unresolved one, and on a machine where the projects root is a symlink they are
+        # two different strings. macOS makes `/tmp` a link to `/private/tmp`, so a real run with
+        # `AISDLC_PROJECTS_DIR=/tmp/...` died here with:
+        #
+        #     '/private/tmp/.../repository/tests' is not in the subpath of
+        #      '/tmp/.../repository'
+        #
+        # A unit test cannot find this: pytest hands out an already-resolved `tmp_path`, and
+        # every one of this repository's tests ran from one. It took a real run on a real
+        # machine with a real projects root, which is the only place a symlink shows up.
+        # `filesystem_read` already resolves both sides for exactly this reason and says so.
+        its_directory = str(where.parent.relative_to(clone.path.resolve()))
         if its_directory in ("", "."):
             continue
 

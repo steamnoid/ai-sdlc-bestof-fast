@@ -61,6 +61,100 @@ CI_AT_THE_ROOT = (
 
 A_LIMIT_ON_A_SINGLE_FILE = 20_000
 
+# A limit on everything, because a context is finite and a selection with no ceiling is a
+# repository pasted into a question. It is generous: enough for a real service's
+# security-relevant surface, and small enough that a manifest is not the fourth of it.
+A_LIMIT_ON_THE_WHOLE_INSPECTION = 120_000
+
+# What a file has to be called to be shown to a security analyst. **A name and not a parse,
+# because a name is the only signal available without reading every file in the repository.**
+# Every entry is a word that appears in a filename when a person has put something at risk, and
+# the list is deliberately a list: a parser for JavaScript routes would be a second language
+# implementation in a tool whose job is to choose what to read, and it would be wrong on the
+# eleventh language somebody writes.
+WHAT_A_NAME_SAYS_A_FILE_MAY_CARRY_RISK = (
+    "auth",
+    "authenticate",
+    "authorization",
+    "middleware",
+    "session",
+    "token",
+    "secret",
+    "credential",
+    "password",
+    "crypto",
+    "permission",
+    "role",
+    "acl",
+    "login",
+    "signup",
+    "user",
+    "admin",
+    "api",
+    "route",
+    "router",
+    "controller",
+    "handler",
+    "env",
+    "config",
+    "policy",
+    "cors",
+    "cookie",
+    "jwt",
+    "oauth",
+    "sanit",
+    "validat",
+)
+
+# What a file has to end in to count as source at all. A repository's own `node_modules` and
+# lockfiles are thousands of files and none of them is code anybody wrote for this project.
+SUFFIXES_THAT_MAY_BE_SOURCE = (
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".py",
+    ".rb",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".php",
+    ".c",
+    ".h",
+    ".cc",
+    ".cpp",
+    ".cs",
+    ".swift",
+    ".scala",
+    ".ex",
+    ".exs",
+    ".sh",
+    ".sql",
+)
+
+# Directories whose contents are somebody else's. Walking into one of these is how an
+# inspection turns into a paste of a dependency tree.
+DIRECTORIES_THAT_HOLD_SOMEONE_ELSES_CODE = (
+    "node_modules",
+    ".git",
+    "vendor",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "target",
+)
+
+# How deep the search goes. Deep enough to find `web-app/src/app/api/.../route.ts` and shallow
+# enough that a generated tree cannot become the answer on its own.
+HOW_DEEP_THE_SEARCH_GOES = 6
+
 
 def an_inspection_of(clone: ClonedRepository) -> str:
     """The files a model is shown, and the listing that gives them context."""
@@ -75,6 +169,155 @@ def an_inspection_of(clone: ClonedRepository) -> str:
     ]
 
     return "\n\n".join(section for section in sections if section)
+
+
+def an_inspection_of_the_code(clone: ClonedRepository) -> str:
+    """Everything `an_inspection_of` shows, plus the code, plus what was left out.
+
+    **Two inspections and not one, because two consumers want different things and sharing one
+    is what broke.** A discovery report wants a repository's *shape*, and this module's own note
+    that source files are not in it is right for that: a summary of a project is not a copy of
+    it. A security analyst is asked to find authentication and authorization problems in the
+    code, and a manifest and a README cannot answer either — so it was handed the shape, and
+    reasoned from filenames, and a real run's gate refused the report for exactly that:
+
+        "Six of the seven entries are then speculation from filenames and dependency
+         declarations alone (findings 4, 5 and 7 reason from `Dockerfile`, `.dockerignore`
+         and `bcryptjs` to MCP-endpoint, image-hygiene and cost-factor conclusions the report
+         itself calls 'undecidable from the manifest')"
+
+    **The closing section is the half that matters more than the code.** A model shown files it
+    was not shown cannot tell that it was not shown them, and a reader cannot either — which is
+    how a report about a repository that was never read reaches a gate looking like a report
+    about one that was. So the inspection ends by naming what it left out, and a finding about a
+    file that is not in that list is visibly a finding about nothing.
+    """
+    inside = clone.path
+
+    what_was_shown, what_was_not = _the_source_that_may_carry_risk(inside)
+
+    sections = [
+        _what_the_project_is(clone),
+        _the_top_level_listing(inside),
+        *_the_contents_of(inside, "manifests", MANIFESTS),
+        *_the_contents_of(inside, "readme", READMES),
+        *_the_ci_configuration(inside),
+        _the_source_is_below(what_was_shown),
+        _what_was_not_shown(what_was_not),
+    ]
+
+    return "\n\n".join(section for section in sections if section)
+
+
+def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]:
+    """The source files whose names say they may hold something risky, and the names of the rest.
+
+    **Chosen by name and capped by characters, in that order.** A name is the only signal
+    available without reading every file, and a cap is what keeps a large repository from
+    becoming a paste. When the cap is reached the search stops and everything left goes into the
+    "not shown" list — so a truncated inspection says it was truncated rather than looking
+    complete.
+    """
+    how_many_characters_are_spent = 0
+    what_was_shown: list[str] = []
+    what_was_not: list[str] = []
+
+    for a_path in _every_source_file_in(inside):
+        its_text = _the_text_of(inside, a_path)
+
+        if its_text is None:
+            what_was_not.append(a_path)
+            continue
+
+        if how_many_characters_are_spent + len(its_text) > A_LIMIT_ON_THE_WHOLE_INSPECTION:
+            what_was_not.append(a_path)
+            continue
+
+        what_was_shown.append(f"## {a_path}\n\n{its_text}")
+        how_many_characters_are_spent += len(its_text)
+
+    return what_was_shown, what_was_not
+
+
+def _every_source_file_in(inside: Path) -> list[str]:
+    """Every source file, nearest the root first, skipping anybody else's code.
+
+    **Sorted by depth and then by path, so two runs of one work item are comparable.** An
+    inspection whose order came out of the file system would be a different question each time,
+    and a report checked against it would be checked against a different thing.
+    """
+    found: list[tuple[int, str]] = []
+
+    for a_path in inside.rglob("*"):
+        if not a_path.is_file():
+            continue
+
+        its_parts = a_path.relative_to(inside).parts
+        if any(a_part in DIRECTORIES_THAT_HOLD_SOMEONE_ELSES_CODE for a_part in its_parts):
+            continue
+        if a_path.suffix not in SUFFIXES_THAT_MAY_BE_SOURCE:
+            continue
+        if len(its_parts) > HOW_DEEP_THE_SEARCH_GOES:
+            continue
+
+        its_name = a_path.name.lower()
+        if not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_CARRY_RISK):
+            continue
+
+        found.append((len(its_parts), str(a_path.relative_to(inside))))
+
+    return [a_path for _, a_path in sorted(found)]
+
+
+def _the_text_of(inside: Path, a_path: str) -> str | None:
+    """One file's text, or `None` when it could not be read or is too large to be worth having.
+
+    **Read through the confined reader, so a symlink out of the clone is refused rather than
+    followed.** A repository is arbitrary input: a file named `auth.ts` is a file a pull request
+    can add, and it can be a link to somewhere else on the machine.
+    """
+    try:
+        read = read_file_in_the_project(
+            a_path_in_the_project(project_directory=inside, path=a_path)
+        )
+    except PathNotInTheProjectError:
+        return None
+
+    if len(read.text) > A_LIMIT_ON_A_SINGLE_FILE:
+        return None
+
+    return read.text
+
+
+def _the_source_is_below(what_was_shown: list[str]) -> str | None:
+    """The code, under a heading that says the rest of this is the code rather than a summary."""
+    if not what_was_shown:
+        return None
+    return "# The code that may carry risk\n\n" + "\n\n".join(what_was_shown)
+
+
+def _what_was_not_shown(what_was_not: list[str]) -> str:
+    """What this inspection left out, said plainly and first.
+
+    **A model that knows its own coverage can be held to it, and a reader can too.** The whole
+    finding of the run that produced this is a report reasoning about files nobody had shown it,
+    and the reason it read as a report is that nothing said otherwise. This section is the
+    otherwise.
+    """
+    if not what_was_not:
+        return (
+            "# What you were not shown\n\nNothing. Every file whose name suggests it may carry "
+            "risk is above, and nothing was left out for being too large or too numerous."
+        )
+
+    return (
+        "# What you were not shown\n\n"
+        f"{len(what_was_not)} further source file(s) whose names suggested they may carry risk, "
+        "and which are **not** above. A finding about one of these is a finding about a file "
+        "nobody has shown you, and it has to say so rather than reason from the name:\n\n"
+        + "\n".join(f"- `{a_path}`" for a_path in what_was_not[:60])
+        + (f"\n- and {len(what_was_not) - 60} more" if len(what_was_not) > 60 else "")
+    )
 
 
 def _what_the_project_is(clone: ClonedRepository) -> str:

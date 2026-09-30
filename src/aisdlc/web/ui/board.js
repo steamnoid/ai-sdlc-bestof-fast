@@ -218,17 +218,38 @@ function drawTheStoryOf(aRun) {
 // person, reading a repository, or dead on the floor with an exception nobody was watching for.
 // The stage is on disk and the run is in memory, so this is the one place the two are joined —
 // and a board that left it out would show a stopped run as one that is still thinking.
+//
+// **And how long it has been on the step it is on.** A real run spent twenty minutes inside one
+// node and this panel said "working" for all of it, which tells a person nothing: they cannot
+// tell a slow run from a stuck one, and they cannot tell from a word which. The run's own record
+// has a timestamp on every line, so the number was always in the store.
 function howThisRunIsDoing(aRun) {
   if (aRun.how_it_ended) {
     return aLine("is-stuck", `this run stopped: ${aRun.how_it_ended}`);
   }
   if (aRun.is_still_working) {
+    const where = aRun.card.the_step_it_is_on;
+    const forHowLong = howLongInWords(aRun.card.how_long_it_has_been_on_this_step);
+    if (where && forHowLong) return aLine("is-working", `on ${where} · ${forHowLong}`);
+    if (where) return aLine("is-working", `on ${where}`);
     return aLine("is-working", "working — an agent has it");
   }
   if (aRun.the_question) {
     return aLine("is-waiting", "waiting for you");
   }
   return null;
+}
+
+/** Seconds as the two units a person actually reads, and nothing below a minute — "47 seconds"
+ * is noise on a panel somebody is meant to glance at, and a run that is going to take an hour
+ * says minutes for the first one of them. */
+function howLongInWords(seconds) {
+  if (seconds === null || seconds === undefined) return null;
+  if (seconds < 60) return null;
+  const inMinutes = Math.floor(seconds / 60);
+  if (inMinutes < 60) return `${inMinutes} minute${inMinutes === 1 ? "" : "s"}`;
+  const inHours = Math.floor(inMinutes / 60);
+  return `${inHours} hour${inHours === 1 ? "" : "s"}`;
 }
 
 function aLine(whatClass, whatItSays) {
@@ -432,6 +453,11 @@ function whatWouldBeDifferentAbout(aRun) {
     aRun.what_it_said.length,
     aRun.is_still_working,
     aRun.how_it_ended,
+    // **The minute, not the event.** The line says how long a run has been on a step, so it has
+    // to change when a minute passes and the run itself has not — otherwise the number on the
+    // panel is the number when the panel was last drawn, which is the frozen number nobody
+    // wanted. Nothing else on the panel moves, so this costs a redraw a minute.
+    Math.floor((aRun.card.how_long_it_has_been_on_this_step ?? 0) / 60),
   ]);
 }
 

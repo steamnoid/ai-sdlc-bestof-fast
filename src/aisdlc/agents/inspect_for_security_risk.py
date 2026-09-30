@@ -35,7 +35,7 @@ from aisdlc.llm.correction_budget import (
 from aisdlc.llm.llm_configuration import a_configuration_from_the_environment
 from aisdlc.llm.model_factory import a_model_for
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.inspect_the_repository import an_inspection_of
+from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 
 def the_prompt_to_inspect_for_security_risk(
@@ -65,6 +65,11 @@ def the_prompt_to_inspect_for_security_risk(
         "\n"
         "This is advisory analysis, not a replacement for a security scanner, and a finding\n"
         "is worth more for saying what a reader should doubt about itself.\n"
+        "\n"
+        "The inspection ends with a section naming the files you were NOT shown. A finding\n"
+        "about one of those is a finding about a file you have not read, and it has to say\n"
+        "that rather than reason from the name — a filename is not evidence of what is in\n"
+        "it. A real run's gate refused a whole report for doing otherwise.\n"
         "\n"
         f"Each finding names these: {', '.join(THE_FIELDS_A_FINDING_MAY_NAME)}.\n"
         f"{correction}"
@@ -104,7 +109,7 @@ def inspect_for_security_risk(
     severity and an empty report are all three the same event to the loop — one correction,
     the reason shown, the budget bounds it.
     """
-    inspection = an_inspection_of(clone)
+    inspection = an_inspection_of_the_code(clone)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -208,6 +209,13 @@ class ACardOnTheBoard(BaseModel):
     who_refused_it: str | None = None
     asked_about: str | None = None
     how_many_gates_it_has_been_through: int = 0
+    #: How long this run has been on the step it is on now, in seconds, or `None` when it has
+    #: not moved since it last said something. **Measured from the run's own record and not
+    #: from the stage**, because the stage is the same for a run that is reading a repository
+    #: and a run that is asleep in a correction loop, and a board that cannot tell those apart
+    #: leaves a person guessing which one they are looking at.
+    how_long_it_has_been_on_this_step: float | None = None
+    the_step_it_is_on: str | None = None
 
     def discipline_in_words(self) -> str:
         """The discipline in a word a person reads, and not the abbreviation a route uses."""
@@ -310,7 +318,57 @@ def _a_card_from(a_register: sqlite3.Connection, the_work_item: WorkItem) -> ACa
         who_refused_it=the_last_refusal.decided_by if the_last_refusal else None,
         asked_about=_where_the_request_can_be_read(the_work_item),
         how_many_gates_it_has_been_through=len(the_decisions),
+        how_long_it_has_been_on_this_step=_how_long_on_this_step(the_events),
+        the_step_it_is_on=_the_step_it_is_on(the_events)
+        or (f"the {the_work_item.role.in_words()} is working" if the_work_item.agent else None),
     )
+
+
+def _the_step_it_is_on(the_events: Sequence[WhatARunSaid]) -> str | None:
+    """The last thing this run did that a person could name, and `None` when there is not one.
+
+    **Only the `ran <node>` lines count, and the framework's own nodes are skipped.** The record
+    holds three kinds of line — a node ran, an artifact was written, a person decided — and the
+    first is the one that is going to change. A card saying "wrote DiscoveryReport" while the run
+    has been on one node for nine minutes is a card that cannot answer the question it is asked.
+
+    **A name in double underscores is LangGraph's and not ours.** `__interrupt__` is the node
+    the framework parks a run at, and it appeared on a real card reading "on `__interrupt__`" —
+    a framework's internal spelling shown to the one reader who cannot do anything with it. A
+    card names this system's steps and says nothing when the only step is somebody else's.
+    """
+    for an_event in reversed(the_events):
+        what_it_said = an_event.what_happened
+        if not what_it_said.startswith("ran "):
+            continue
+        a_node = what_it_said.removeprefix("ran ")
+        if a_node.startswith("__") and a_node.endswith("__"):
+            continue
+        return a_node
+    return None
+
+
+def _how_long_on_this_step(the_events: Sequence[WhatARunSaid]) -> float | None:
+    """Seconds since the run last said it had started a step, or `None` when it never has.
+
+    **A real run spent twenty minutes on one node and the board said nothing for all of it.**
+    A run's own record has a timestamp on every line, so the answer was always in the store; what
+    was missing was a card that read it. A person who can see "12 minutes on the planner" can
+    decide whether that is slow or wrong, and a person who sees "working" can decide neither.
+    """
+    if not the_events:
+        return None
+
+    the_step_began_at = None
+    for an_event in the_events:
+        if an_event.what_happened.startswith("ran "):
+            the_step_began_at = an_event.happened_at
+
+    if the_step_began_at is None:
+        return None
+
+    how_long = (datetime.now(UTC) - the_step_began_at).total_seconds()
+    return how_long if how_long >= 0 else None
 
 
 def _the_title_of(the_work_item: WorkItem) -> str:
