@@ -264,11 +264,19 @@ def the_api_over(
     def one_run(work_item_id: str) -> dict[str, object]:
         """Everything one run can be asked about: its card, its gates, its notes, what it said.
 
-        **Two facts the store cannot hold, both about the run rather than its record.** Whether
-        it is walking right now, and how it ended if it did. A card reads `AWAITING_HUMAN_APPROVAL`
-        for a run parked at a gate *and* for a run that died there, and those two look identical
-        on a board — so the two things only this process knows are answered here, where a caller
-        that renders a card has somewhere to put them.
+        **Three facts the store cannot hold, all about the run rather than its record.** Whether
+        it is walking right now, how it ended if it did, and whether this process is holding it
+        at all. A card reads `AWAITING_HUMAN_APPROVAL` for a run parked at a gate *and* for a run
+        that died there, and those two look identical on a board — so the things only this
+        process knows are answered here, where a caller that renders a card has somewhere to put
+        them.
+
+        **The third is the one that stops the board lying.** A parked run is a compiled graph
+        with a checkpoint in this process's memory, so a restart forgets it while the register
+        keeps the card and the pending question. Without this the answer was "not working, not
+        ended, has a question" — which a browser renders as *waiting for you*, and clicking
+        approve returns 410 from a gate nobody is listening at. A board that invites a decision
+        it cannot record is worse than one that says the run is gone.
         """
         the_card = what_the_board_can_say_about(a_register, work_item_id)
         if the_card is None:
@@ -295,6 +303,7 @@ def the_api_over(
             ],
             "is_still_working": the_runs.is_this_run_still_walking(work_item_id),
             "how_it_ended": the_runs.how_this_run_ended(work_item_id),
+            "is_this_process_holding_it": the_runs.this_run_is_held_here(work_item_id),
         }
 
     @the_app.post("/api/runs")

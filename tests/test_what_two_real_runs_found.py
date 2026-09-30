@@ -405,3 +405,96 @@ def test_a_card_never_names_a_framework_node_as_a_step() -> None:
         "LangGraph's internals to the one reader who cannot do anything with them"
     )
     assert _the_step_it_is_on([an_event("ran __interrupt__")]) is None
+
+
+def test_a_run_this_process_has_forgotten_is_said_to_have_been_forgotten(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A card from a run whose process is gone says so, and answering it is refused.
+
+    **A parked run is a graph with a checkpoint in memory, so a restart forgets it while the
+    register keeps the card and the pending question.** Everything the store holds survives —
+    the work item, the question, the decisions, the clone, the artifacts — and everything the
+    process held does not. Before this, the API answered "not working, not ended, has a
+    question" for both a run that is parked and a run nobody is in any more, and the board
+    rendered the first as *waiting for you*.
+
+    **The state is built rather than raced.** A test that starts a run and waits for it to reach
+    a gate is a test with a timeout in it, and this case is about two processes and one register
+    — which is a fact about the wiring and can be had by asking the store directly.
+    """
+    from fastapi.testclient import TestClient
+
+    from aisdlc.application.the_runs_this_process_is_holding import TheRunsThisProcessIsHolding
+    from aisdlc.domain.commissioned_request import a_request_about
+    from aisdlc.domain.repository import Repository
+    from aisdlc.domain.role import Role
+    from aisdlc.domain.stage import Stage
+    from aisdlc.domain.state_machine import transition
+    from aisdlc.domain.work_item import a_work_item_commissioned_for_an_agent
+    from aisdlc.store.the_record_of_a_run import what_the_gate_is_asking_about
+    from aisdlc.store.the_register_of_work_items import the_work_item_a_commission_registers
+    from aisdlc.store.what_a_run_records import the_move_was_recorded
+    from aisdlc.store.where_the_register_lives import the_register, the_register_lives_at
+    from aisdlc.web.the_api import the_api_over
+
+    monkeypatch.setenv("AISDLC_PROJECTS_DIR", str(tmp_path / "projects"))
+    the_register_lives_at(tmp_path / "the-register.sqlite3")
+
+    # A run that walked to its first gate and parked there, built by hand.
+    a_repository = Repository(owner="an", name="owner")
+    the_work_item = the_work_item_a_commission_registers(
+        the_register(),
+        a_work_item_commissioned_for_an_agent(
+            work_item_id="issue-7",
+            repository=a_repository,
+            accountable_role=Role.DEV,
+            commissioned_by="a person",
+            requested=a_request_about("add a health endpoint"),
+        ),
+    )
+    # READY -> AWAITING_AGENT_PICKUP -> IN_PROGRESS_BY_AGENT -> AWAITING_HUMAN_APPROVAL, which
+    # is the walk a run really makes, because the table is the only door and a state built by
+    # assigning `.stage` would not be a state this system can be in. **Every move is recorded in
+    # the register as it is made**, because a run that reached a gate without the register
+    # knowing would be refused by the gate for a different reason than the one this test is
+    # about — and a test that passes for the wrong reason is a test that has proved nothing.
+    where_it_was = the_work_item
+    for a_stage, an_agent in (
+        (Stage.AWAITING_AGENT_PICKUP, "aisdlc-discover"),
+        (Stage.IN_PROGRESS_BY_AGENT, "aisdlc-discover"),
+        (Stage.AWAITING_HUMAN_APPROVAL, None),
+    ):
+        where_it_is_now = transition(where_it_was, a_stage, an_agent, Role.DEV)
+        the_move_was_recorded(where_it_was, where_it_is_now)
+        where_it_was = where_it_is_now
+
+    what_the_gate_is_asking_about(the_register(), "issue-7", "DiscoveryReport", 1)
+
+    # A process that has never heard of it. That is the whole case: a restart, not a failure.
+    the_board = TestClient(the_api_over(the_register(), TheRunsThisProcessIsHolding()))
+
+    what_it_says = the_board.get("/api/runs/issue-7").json()
+
+    assert what_it_says["the_question"] is not None, (
+        "the pending question is in the store and survived, which is the premise: everything the "
+        "store holds is still true after a restart, and everything the process held is not"
+    )
+    assert what_it_says["is_this_process_holding_it"] is False, (
+        "this process never started this run, so it is not holding it. Without this the board "
+        "cannot tell a run that is parked from a run nobody is in any more — and it renders the "
+        "first as waiting for you, which invites a decision the server will then refuse"
+    )
+    assert what_it_says["is_still_working"] is False
+
+    the_answer = the_board.post(
+        "/api/runs/issue-7/decisions",
+        json={"approved": True, "decided_by": "a person", "reason": "it is right"},
+    )
+    assert the_answer.status_code == 410, (
+        f"answering a run nobody is holding returned {the_answer.status_code} rather than 410, "
+        "and a board that offers a button and then discards what is pressed into it is worse "
+        "than one that does not offer it. The decision here is *admissible* — the work item is "
+        "at its gate in the register and the question is pending — so nothing but the missing "
+        "run can refuse it, and a refusal for any other reason would be blaming the wrong thing"
+    )

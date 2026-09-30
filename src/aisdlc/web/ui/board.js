@@ -227,6 +227,16 @@ function howThisRunIsDoing(aRun) {
   if (aRun.how_it_ended) {
     return aLine("is-stuck", `this run stopped: ${aRun.how_it_ended}`);
   }
+  // **A run this process has forgotten is said so, and said first.** A parked run is a graph
+  // with a checkpoint in memory, so a restart loses it while the register keeps the card and the
+  // pending question. Everything else on this panel would read that as "waiting for you" and
+  // invite a decision the server cannot record — the answer comes back 410 from a gate nobody
+  // is listening at. The artefacts, the clone and the register all survived; what is gone is the
+  // graph's place in the pipeline, and commissioning it again is what starts another attempt
+  // from where the work item got to.
+  if (aRun.is_this_process_holding_it === false) {
+    return aLine("is-stuck", "the process this run was in has gone — ask for it again to start another attempt");
+  }
   if (aRun.is_still_working) {
     const where = aRun.card.the_step_it_is_on;
     const forHowLong = howLongInWords(aRun.card.how_long_it_has_been_on_this_step);
@@ -453,6 +463,7 @@ function whatWouldBeDifferentAbout(aRun) {
     aRun.what_it_said.length,
     aRun.is_still_working,
     aRun.how_it_ended,
+    aRun.is_this_process_holding_it,
     // **The minute, not the event.** The line says how long a run has been on a step, so it has
     // to change when a minute passes and the run itself has not — otherwise the number on the
     // panel is the number when the panel was last drawn, which is the frozen number nobody

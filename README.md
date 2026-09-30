@@ -210,8 +210,12 @@ Stated rather than left to be discovered.
   unexercised. The engine's own runs exercised it; this repository's have not.
 - **A durable checkpointer.** Runs are held in memory, so **a restart loses every parked run**.
   The register, the clone and every artifact survive; the graph's place in the pipeline does
-  not. A run that is waiting for an answer when the process dies is a card on the board that
-  nobody is going to finish — and the API says so rather than pretending.
+  not. What *is* built is the honesty about it: the API says whether this process is holding a
+  run at all, and a card for a run nobody is in reads *"the process this run was in has gone —
+  ask for it again to start another attempt"* rather than *waiting for you*. Before that, the
+  board invited a decision on a gate that would then answer `410`, which is a button that
+  discards what is pressed into it. Making the memory durable is a real change with a real cost;
+  making the board stop lying about not having one was the part that was owed today.
 - **Authentication.** There is none. Anybody who can reach `127.0.0.1:842` can start a run on a
   real repository and answer every gate on it. The loopback address is the whole of the
   boundary, and a deployment that needs it exposed has to put its own authentication in front.
