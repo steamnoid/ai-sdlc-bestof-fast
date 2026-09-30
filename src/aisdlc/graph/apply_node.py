@@ -36,7 +36,10 @@ from aisdlc.graph.supervise_a_repair import (
 )
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.what_people_said_about_a_work_item import a_comment_was_left
-from aisdlc.verify_the_change import ATestThatPassesWithoutTheChangeError
+from aisdlc.verify_the_change import (
+    AnUnrunTestError,
+    ATestThatPassesWithoutTheChangeError,
+)
 
 ApplyAndVerify = Callable[
     [ClonedRepository, Repository, ImplementationPlan], ADeliveredChange
@@ -67,7 +70,11 @@ def apply_and_verify_in_this_run(
 
     try:
         delivered = apply_and_verify(clone, state["work_item"].repository, plan)
-    except (ATestThatPassesWithoutTheChangeError, AWriteThatChangesNothingError) as repairable:
+    except (
+        ATestThatPassesWithoutTheChangeError,
+        AWriteThatChangesNothingError,
+        AnUnrunTestError,
+    ) as repairable:
         # **Named, not `except Exception`, and the naming is the declaration.** This node says a
         # refusal of this kind is one it can hand on. A node catching everything would make the
         # supervisor the place a run goes when anything goes wrong, and a repair that repairs a

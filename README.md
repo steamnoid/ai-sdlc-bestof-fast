@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 33 tests, 4s, no network, no model, no credential, no container
+uv run pytest -q     # 35 tests, 4s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -320,7 +320,7 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 
 Stated rather than left to be discovered.
 
-- **The supervisor has still not fired inside a whole run.** It has been asked, by a real model,
+- **The supervisor still has not fired inside a whole run, and the reason is now known.** It has been asked, by a real model,
   with a real card and a real refusal, and it answered correctly — and its routing is now covered
   for all four refusals that reach it. What has not happened is an end-to-end run tripping one,
   and the reason is now clear rather than mysterious: **a gate refusal stops the run by design**,

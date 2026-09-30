@@ -35,6 +35,8 @@ from pathlib import Path
 import pytest
 from langgraph.types import Command
 
+import aisdlc.verify_the_change as verify_the_change
+from aisdlc.agents import implement_the_plan
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.role import Role
@@ -45,6 +47,7 @@ from aisdlc.domain.the_work_each_agent_has_done import (
     TheWorkOneAgentHasDone,
 )
 from aisdlc.domain.work_item import WorkItem, a_work_item_commissioned_for_an_agent
+from aisdlc.graph import apply_node
 from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
 from aisdlc.graph.supervise_a_repair import (
     TheRepeatBudgetRanOutError,
@@ -715,3 +718,128 @@ def _a_clone_standing_in_for_a_real_one() -> object:
     from aisdlc.tools.github_clone_repository import ClonedRepository
 
     return ClonedRepository(path=Path("/nowhere/a-clone"), ref="main", commit="0" * 40)
+
+
+def test_a_test_the_suite_never_ran_is_handed_to_the_supervisor() -> None:
+    """The third sibling: the change ships, the suite is green, and the new test never ran.
+
+    **The green report is the point.** `ATestThatPassesWithoutTheChangeError` fires when a change
+    proves nothing because the suite is the same either way, and this one fires when the suite
+    agrees and *never collected the test the plan said it added* — a green report over a change
+    that was never executed is the report that lies, and it is the only one of the three that
+    looks entirely healthy from the outside.
+
+    **It is raised by the same node as its sibling and was not routed, which is how the second
+    one was missed.** Two of these three refusals came out of real runs and the third was found
+    by reading the `except` that had been edited to hold the other two. Naming two siblings and
+    leaving the third to be discovered by a run is not a defensible way to hold a list, so this
+    is the test that says the list is closed.
+    """
+    from aisdlc.agents.implementation_plan import ImplementationPlan
+    from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN
+    from aisdlc.graph.apply_node import apply_and_verify_in_this_run
+    from aisdlc.verify_the_change import AnUnrunTestError
+
+    a_state: AgentState = {
+        "work_item": _a_work_item_at_the_delivery_gate(),
+        "projects_root": Path("/nowhere"),
+        "clone": _a_clone_standing_in_for_a_real_one(),
+        "implementation_plan": ImplementationPlan(
+            files_to_change=["src/health.ts"], tests_to_add=["test_health.ts"]
+        ),
+        "requested_stage": Stage.AWAITING_HUMAN_APPROVAL,
+        "requested_agent": None,
+        "requested_role": Role.DEV,
+        "presented_artifact_id": "VerificationReport",
+        "presented_artifact_version": 1,
+        "decisions": [],
+        "approvals": [],
+        WHAT_STOPPED_THIS_RUN: None,
+    }
+
+    def a_verifier_whose_new_test_was_never_collected(
+        *arguments: object,
+    ) -> object:
+        raise AnUnrunTestError(
+            "The suite passed and never ran 1 of the 1 test(s) this approved plan said the "
+            "change adds: test_health.ts. A test file the suite's runner never collects is not a "
+            "passing test — it is a file that was never opened."
+        )
+
+    the_command = apply_and_verify_in_this_run(  # type: ignore[arg-type]
+        a_state, a_verifier_whose_new_test_was_never_collected
+    )
+
+    assert isinstance(the_command, Command)
+    assert the_command.goto == "supervise_a_repair", (
+        "a change that was delivered with its test never collected stops the run, and it is the "
+        "one refusal of the three where the report looks entirely healthy — a reader of the "
+        "board sees a green suite and a delivered change, and nothing anywhere says the new test "
+        "was never opened"
+    )
+    assert "test_health.ts" in the_command.update[WHAT_STOPPED_THIS_RUN], (
+        "the refusal handed over does not name the uncollected test, so the supervisor cannot "
+        "tell a test in the wrong directory from a test that was never written"
+    )
+
+
+def test_every_refusal_the_change_can_raise_is_routed_somewhere() -> None:
+    """The closed list, checked against the source — because a list nobody checks is a wish.
+
+    **How both of the routing gaps were found, and why this is the only check that could have
+    found the second one.** `apply_node`'s `except` held one name, then two, each added by a
+    real run that tripped it. That is how the third got in and it cost a run; the pattern is that
+    a refusal is discovered by *meeting* it, and the only refusals ever met are the ones a run
+    happened to reach. Adding a name per run is a list that grows at the rate runs fail.
+
+    **So the list is read from the source rather than written out again here.** `verify_the_change`
+    and `implement_the_plan` are the two modules that can refuse — a green suite that is a lie, a
+    change that proves nothing, a change that was never made, a test that was never opened — and
+    every `A…Error` they define is a run that stops for a reason a supervisor could have judged.
+    A fifth one added to either module without a route is a run that stops on a question this
+    system has a reader for, and this says so at the moment it is written rather than twenty
+    minutes into a run nobody is watching.
+
+    **Both sides are parsed, not imported, and that is deliberate.** Importing the classes would
+    make a test that has to be updated to stay in step with the code, which is the same list
+    twice — and the second copy is the one that goes stale quietly. Here a rename or a deletion
+    on either side is seen as what it is.
+    """
+    import ast
+    import re
+
+    the_modules_that_can_refuse = [
+        Path(verify_the_change.__file__),
+        Path(implement_the_plan.__file__),
+    ]
+    routed_text = Path(apply_node.__file__).read_text()
+    every_refusal: set[str] = set()
+    for a_module in the_modules_that_can_refuse:
+        the_classes = ast.parse(a_module.read_text()).body
+        for a_class in the_classes:
+            if not isinstance(a_class, ast.ClassDef):
+                continue
+            if not a_class.name.endswith("Error") or not a_class.name.startswith("A"):
+                continue
+            if not any(
+                isinstance(a_base, ast.Name) and a_base.id == "Exception"
+                for a_base in a_class.bases
+            ):
+                continue
+            every_refusal.add(a_class.name)
+
+    assert every_refusal, (
+        "no refusal was found in either module, so this test is not reading the code it claims to "
+        "read and would pass forever"
+    )
+
+    unrouted = {
+        a_refusal
+        for a_refusal in sorted(every_refusal)
+        if not re.search(rf"\b{re.escape(a_refusal)}\b", routed_text)
+    }
+    assert not unrouted, (
+        f"{', '.join(unrouted)} can stop a run and nothing hands it to the supervisor. It is a "
+        f"refusal a person could judge, which is the whole reason the supervisor exists, and a "
+        f"run that hits it stops instead of asking"
+    )
