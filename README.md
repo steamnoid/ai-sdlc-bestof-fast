@@ -1,0 +1,155 @@
+# ai-sdlc-bestof-fast
+
+An AI-native software lifecycle with a board. A repository goes in, a sentence says what should
+change, and a pull request comes out with every decision in the trail.
+
+```text
+  a repository and a sentence
+              │
+              ▼
+   discovery ─▶ requirements ─▶ scenarios ─▶ architecture ─▶ security
+       │            │              │             │             │
+     a gate        a gate         a gate        a gate        a gate
+       │            │              │             │             │
+       ▼            ▼              ▼             ▼             ▼
+      plan ─▶ implementation ─▶ verification ─▶ pull request ─▶ DONE
+       │              │              │
+     a gate        a gate         a gate
+       │              │              │
+       └──────── a refusal or a red suite goes to the repair supervisor ─┘
+```
+
+Eight gates, and a person is asked at every one. A refusal ends the run where it was refused,
+with the reason on the card.
+
+---
+
+## Run it
+
+```bash
+uv sync --all-groups
+uv run aisdlc serve            # the board, on http://127.0.0.1:842
+```
+
+Open the address, type a repository and a sentence, press **start a run**. A card appears
+immediately — before the clone, before the first model call — and then moves on its own until it
+reaches a gate and waits for you. Click the card to read what the run found and to answer.
+
+A run in a terminal instead, with the gates in your own shell:
+
+```bash
+uv run aisdlc run paligakrzychu/wellbeing-tracker-public "add a /health endpoint"
+```
+
+### Configuration
+
+A run needs a model, and the deployment says which:
+
+```bash
+LLM_PROVIDER=openai_compatible
+LLM_ENDPOINT=https://...
+LLM_MODEL=...
+LLM_THREAD_ID=aisdlc            # the gateway routes by session and refuses without it
+OPENAI_API_KEY=...               # the name LangChain's clients read, so this one reads it too
+```
+
+| setting | what it does |
+|---|---|
+| `AISDLC_PROJECTS_DIR` | where every run's directory goes, and where the register file sits. Defaults to `./aisdlc-projects` |
+| `AISDLC_APPROVAL_POLICY` | a bare name. The policy that answers the gates instead of a person, recorded as `autopilot:<name>` and never as a person |
+| `AISDLC_FORK_OWNER` | whose copy a run pushes to. Delivery needs it; a run that only reasons does not |
+| `AISDLC_CORRECTION_BUDGET` | how many times a run may ask a model for an answer it already had |
+| `AISDLC_REPEAT_BUDGET` | how many times the supervisor may put an agent back on a ticket |
+| `AISDLC_WHAT_A_RUN_IS_DOING` | `1` sends every tool call and every token to the terminal |
+
+`GITHUB_TOKEN` is needed for delivery and not for reasoning. Every one of these is **refused
+rather than defaulted** when it holds something this system cannot read — a setting nobody
+noticed and an answer nobody asked for are the same failure wearing different names.
+
+---
+
+## The test
+
+```bash
+uv run pytest -q     # 3 tests, 2.5s, no network, no model, no credential, no container
+```
+
+One file, and it is the whole product: a person posts a repository and a sentence over real
+HTTP, answers eight gates one at a time, and gets a pull request — with a **real `git clone`** of
+a repository made locally on the spot, the real state machine, the real gate, the real register
+and a real board. Four things are replaced and each is named where it is replaced: the seven
+agents do not call a model, the two delivery collaborators do not call GitHub, and the clone is
+fetched from a path rather than a host. Everything else is production code on its real path.
+
+It asserts the things that would be a lie otherwise: that a card exists before the run has done
+anything, that the work item really is at `DONE` when the board says delivered, that a refusal
+leaves one decision and no approval, and that an `aisdlc-` identifier posted as a decider is
+refused with the gate's own sentence.
+
+---
+
+## Where this came from
+
+This is an assembly of two half-products that are each other's missing half, and being explicit
+about that is more useful than pretending it was written from nothing.
+
+| | |
+|---|---|
+| **`ai-sdlc-os`** | the engine, unchanged and unrewritten. Eight agents with real prompts, the GitHub tools, the containerised test runner, the delivery, the repair supervisor, LangGraph. It has opened three real pull requests on a public repository. What it had not: any way to see or start a run — its own `AGENTS.md` says "What is genuinely not built is the API and the CLI" |
+| **`ai-sdlc-bestof`** | the interface, unchanged and unrewritten. The SQLite store, the five-column board, the FastAPI over it, the browser UI, the event stream, the derived column rule. What it had not: a way to start a run, any GitHub tool, and six of its eight stages had no agent at all — it was a board over a store nothing wrote |
+
+So the engine got the board and the board got an engine. The parts written here are the ones
+neither had:
+
+- `application/a_run_being_assembled.py` — the composition root. Before this, the only code that
+  ever assembled a run was a test in a real-dependency tier, which is a test suite doing a
+  product's job.
+- `application/the_runs_this_process_is_holding.py` — the bridge. A run is a compiled graph with
+  a checkpoint in memory; this holds it between the moment it parks at a gate and the moment
+  somebody answers, and it is where a decision enters.
+- `store/what_a_run_records.py` — five write-through recorders, hung on the five places the
+  engine already had a function that made something a fact. **No new nodes and no rewiring.**
+- `web/the_api.py` — `POST /api/runs`, the endpoint neither project had.
+- `cli.py` — the two commands.
+- the form on the board, and the run-status line that joins what is on disk to what is in memory.
+
+### Two real bugs found on the way
+
+**`the_lifecycle` took a `plan_the_clone` parameter and one of its own wiring functions ignored
+it**, reading the module constant instead. The parameter was a claim about the function that was
+false, and nothing could have found it but a test that passed a clone planner and watched the
+real one run instead.
+
+**Two locks on one SQLite connection.** The board and the run each had their own, which is the
+same as no lock at all: `InterfaceError: bad parameter or other API misuse` from a query that
+worked a moment earlier. There is now one lock, taken by both, in one module.
+
+---
+
+## What is not built
+
+Stated rather than left to be discovered.
+
+- **Creative mode.** `ai-sdlc-bestof` has a repository brief itself and file its own issues. It
+  is ~500 lines of unported code that nothing would reach in the first hour. It comes back
+  second.
+- **A durable checkpointer.** Runs are held in memory, so **a restart loses every parked run**.
+  The register, the clone and every artifact survive; the graph's place in the pipeline does
+  not. A run that is waiting for an answer when the process dies is a card on the board that
+  nobody is going to finish — and the API says so rather than pretending.
+- **Authentication.** There is none. Anybody who can reach `127.0.0.1:842` can start a run on a
+  real repository and answer every gate on it. The loopback address is the whole of the
+  boundary, and a deployment that needs it exposed has to put its own authentication in front.
+- **A browser test tier.** The UI is served and the JSON it renders is proven; nothing drives a
+  real browser. The two defects the board had when it arrived — a refused gate drawn in the
+  colour and the word of an approved one, and no way to start a run at all — were found by
+  reading the source, and the first is fixed.
+- **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
+  end-to-end tests were not copied. This repository ships one test file, and it is the
+  end-to-end one, because that is the claim being made. The engine's own suite is where the
+  per-agent contracts are proven, and it still exists in `ai-sdlc-os`.
+- **The quality gates the engine was built under.** Strict TDD, the readability guards, the
+  glossary guard, the per-cycle commit discipline, `mypy --strict`, the e2e and container tiers.
+  This repository was assembled for speed and carries one test, `ruff`, and a non-strict `mypy`.
+  That is a real trade: the engine's safeguards are not reproduced here, and the engine is where
+  they still run.

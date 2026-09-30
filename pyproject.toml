@@ -1,0 +1,113 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aisdlc"
+version = "0.1.0"
+description = "An AI-native SDLC with a board: a repository goes in, a pull request and nine decisions come out."
+readme = "README.md"
+requires-python = ">=3.12"
+
+# Eight, and the count is the design.
+#
+# **pydantic** validates what a model says at every boundary. A model that silently drops a
+# field it has no name for is the one failure mode this whole product has to not have: an
+# approval covers an artifact at a version, and a dropped field is an approval covering
+# something nobody read.
+#
+# **httpx** is the GitHub REST client. The model is reached through LangChain instead,
+# because the model factory is borrowed whole from the engine this repository is built on
+# and it is proven against two real providers.
+#
+# **langgraph** is the lifecycle. Eight stages, eight gates, a repair loop. It is the one
+# thing here that was not rewritten, and rewriting it is the one thing this repository has
+# the least reason to do.
+#
+# **fastapi and uvicorn** serve the board. **typer** is the CLI, and it calls the same
+# composition root the API does.
+#
+# **Deliberately absent: sqlalchemy, psycopg, alembic, aiosqlite.** The engine this
+# inherited declared all four and imported none of them. The register is SQLite through the
+# standard library, which needs no server and no credentials, and an MVP whose first
+# requirement is that a person can run it with no infrastructure cannot open with a
+# database server.
+dependencies = [
+    "pydantic>=2.0",
+    "httpx>=0.28",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "typer>=0.15",
+    "langchain>=1.0",
+    "langchain-openai>=1.0",
+    "langchain-ollama>=1.1.0",
+    "langgraph>=1.0",
+]
+
+[project.scripts]
+aisdlc = "aisdlc.cli:aisdlc"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.0",
+    "ruff>=0.16",
+    "mypy>=1.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aisdlc"]
+
+# ---------------------------------------------------------------------------
+# Lint is on, and it is not the reason this repository is slow. `D` (a docstring on every
+# public function) is kept because the engine's modules already have one and dropping the
+# rule would only create work later. Everything else is the engine's own configuration,
+# carried over unchanged.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "PTH", "RUF", "N", "A", "S"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN", "S101", "PLR2004", "SLF001", "S603", "S607"]
+"src/aisdlc/tools/run_command.py" = ["S603"]
+# `S608` asks whether a value reached a query as text rather than as a bound parameter, and the
+# answer here is that no value ever does. Every query interpolates `_THE_WORK_ITEM_COLUMNS`,
+# which is a module constant listing column names this file wrote, and every value a caller
+# supplies — the work item id — is bound with `?`. Listing the columns in one constant and
+# interpolating it is what keeps the SELECT and the row builder from disagreeing about the
+# column order, which is a real failure and the one this rule is nominally standing in for.
+"src/aisdlc/store/the_register_of_work_items.py" = ["S608"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+# ---------------------------------------------------------------------------
+# mypy is not strict here, and the reason is in the README: this repository's first
+# requirement was to ship. The types that matter — the state machine, the register, the
+# gate — are annotated exactly as the engine annotated them, because that code was written
+# under a stricter regime and unwriting its annotations would have been pure cost.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+warn_unused_configs = true
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# The default run is free: no network, no model, no credential, no browser, no container.
+# One marker for the tier that needs a real model, deselected here rather than skipped
+# inside a test, because a skip that prints its reason is a claim and a deselection is a
+# fact.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+addopts = "-m 'not e2e' --strict-markers --import-mode=importlib"
+markers = [
+    "e2e: real agent, real model, real repository, opt-in",
+]

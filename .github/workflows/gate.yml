@@ -1,0 +1,29 @@
+name: gate
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  the_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.17"
+      - run: uv sync --all-groups
+      # A stale editable install runs another checkout and passes every test.
+      - name: prove this is this repository's code
+        run: |
+          resolved="$(uv run python -c 'import aisdlc; print(aisdlc.__file__)')"
+          case "$resolved" in
+            "$GITHUB_WORKSPACE"/*) echo "ok: $resolved" ;;
+            *) echo "aisdlc resolved to $resolved, which is outside this checkout"; exit 1 ;;
+          esac
+      # The default suite is free of every real dependency, so CI needs no secrets and the
+      # e2e tier is deliberately absent rather than skipped.
+      - run: uv run pytest -q
+      - run: uv run ruff check .
+      - run: uv run mypy src

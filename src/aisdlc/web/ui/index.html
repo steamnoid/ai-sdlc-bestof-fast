@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>aisdlc — the board</title>
+    <link rel="stylesheet" href="/ui/style.css" />
+  </head>
+  <body>
+    <header class="the-top">
+      <h1>the board</h1>
+      <p class="what-this-is">
+        Every ticket is a work item. It moves when work happens, and it waits when a person is
+        owed an answer.
+      </p>
+    </header>
+
+    <form class="ask-for-something" id="ask-for-something">
+      <div class="the-repository">
+        <input
+          type="text"
+          id="repository-owner"
+          name="owner"
+          placeholder="owner"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="the repository's owner"
+          required
+        />
+        <span class="the-slash">/</span>
+        <input
+          type="text"
+          id="repository-name"
+          name="name"
+          placeholder="name"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="the repository's name"
+          required
+        />
+      </div>
+      <input
+        type="text"
+        id="asked-for"
+        name="asked_for"
+        placeholder="one sentence saying what should change"
+        autocomplete="off"
+        required
+      />
+      <button type="submit" id="start-a-run">start a run</button>
+      <p class="what-happened" id="what-happened-to-the-request" role="status"></p>
+    </form>
+
+    <main class="the-board" id="the-board" aria-label="tickets by where they are"></main>
+
+    <aside class="the-story" id="the-story" hidden aria-label="what one run is doing">
+      <button class="close-the-story" id="close-the-story" aria-label="close">×</button>
+      <div id="the-story-body"></div>
+    </aside>
+
+    <div class="nothing-here" id="nothing-here" hidden>
+      <h2>nothing on the board yet</h2>
+      <p>
+        Type a repository and a sentence above. The run appears here immediately, reads the
+        repository, says what it found, and then <strong>stops at the first gate</strong> and waits
+        for a name and a reason. Click its card to answer.
+      </p>
+    </div>
+
+    <script type="module" src="/ui/board.js"></script>
+  </body>
+</html>

@@ -1,0 +1,291 @@
+/* One stylesheet, and the palette is the one the landing page already uses.
+ *
+ * Zinc for the neutrals, amber for *waiting on a person* — which is exactly what a gate is, so
+ * the colour is the domain's meaning rather than decoration — emerald for approved, red for
+ * refused, violet for an agent working. A reader who has read one page of this product already
+ * knows all five, which is the point of borrowing the values rather than choosing new ones.
+ *
+ * Two radii only: 12px for a card and 999px for a pill. They are the two the page uses most, and
+ * they are the two this board draws most.
+ */
+
+:root {
+  --zinc-50: #fafafa;
+  --zinc-100: #f4f4f5;
+  --zinc-200: #e4e4e7;
+  --zinc-300: #d4d4d8;
+  --zinc-400: #9f9fa9;
+  --zinc-500: #71717b;
+  --zinc-600: #52525c;
+  --zinc-700: #3f3f46;
+  --zinc-800: #27272a;
+  --zinc-900: #18181b;
+  --amber-50: #fffbeb;
+  --amber-200: #fee685;
+  --amber-500: #fe9a00;
+  --emerald-50: #ecfdf5;
+  --emerald-500: #00bc7d;
+  --emerald-800: #006045;
+  --red-400: #ff6467;
+  --red-700: #b91c1c;
+  --red-background: #fef2f2;
+  --violet-50: #f5f3ff;
+  --violet-200: #ddd6ff;
+  --violet-800: #5d0ec0;
+  --a-card: 12px;
+  --a-pill: 999px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--zinc-50);
+  color: var(--zinc-800);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, .an-identifier {
+  font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  font-size: 0.9em;
+}
+
+.the-top { padding: 28px 32px 8px; }
+.the-top h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+.what-this-is { margin: 6px 0 0; color: var(--zinc-500); max-width: 62ch; }
+
+.the-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(232px, 1fr);
+  gap: 14px;
+  padding: 20px 32px 32px;
+  overflow-x: auto;
+  align-items: start;
+}
+.the-board[hidden] { display: none; }
+
+.a-column { min-height: 120px; }
+.a-column > h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--zinc-500);
+}
+.a-column > .how-many { float: right; color: var(--zinc-400); font-weight: 500; }
+
+.a-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: white;
+  border: 1px solid var(--zinc-200);
+  border-radius: var(--a-card);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.a-card:hover { border-color: var(--zinc-300); box-shadow: 0 1px 3px rgb(24 24 27 / 6%); }
+.a-card:focus-visible { outline: 2px solid var(--amber-500); outline-offset: 2px; }
+.a-card.is-open { border-color: var(--zinc-400); }
+
+.a-card .the-title { font-weight: 550; margin: 0 0 6px; }
+.a-card .where-it-came-from {
+  font-size: 12px;
+  color: var(--zinc-500);
+  margin: 0 0 8px;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.a-card .the-meter { font-size: 12px; color: var(--zinc-600); margin: 0; }
+
+.a-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--a-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.a-pill.is-waiting { background: var(--amber-50); color: #973c00; border: 1px solid var(--amber-200); }
+.a-pill.is-working { background: var(--violet-50); color: var(--violet-800); border: 1px solid var(--violet-200); }
+.a-pill.is-done { background: var(--emerald-50); color: var(--emerald-800); border: 1px solid #a7f3d0; }
+.a-pill.is-refused { background: var(--red-background); color: var(--red-700); border: 1px solid #fecaca; }
+.a-pill.is-queued { background: var(--zinc-100); color: var(--zinc-600); border: 1px solid var(--zinc-200); }
+
+.why-it-was-refused {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  background: var(--red-background);
+  border-left: 2px solid var(--red-400);
+  font-size: 12px;
+  color: var(--red-700);
+}
+
+.nothing-here { padding: 8px 32px 48px; max-width: 68ch; color: var(--zinc-600); }
+.nothing-here h2 { font-size: 16px; color: var(--zinc-800); margin: 16px 0 6px; }
+
+/* The form that starts a run, and the one line that says what happened to the request.
+   **The fields are one row on a wide screen because a request is one thought**, and the
+   repository's two halves sit together around a slash that cannot be typed into either of
+   them — a repository is `owner/name` and splitting that into two free-text boxes would let
+   somebody paste the whole thing into the first. */
+.ask-for-something {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 32px 20px;
+  max-width: 1180px;
+}
+.ask-for-something input {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--zinc-300);
+  border-radius: var(--a-card);
+  background: #fff;
+  color: var(--zinc-900);
+}
+.ask-for-something input:focus-visible {
+  outline: 2px solid var(--violet-800);
+  outline-offset: 1px;
+}
+.the-repository { display: flex; align-items: center; gap: 2px; }
+.the-repository input { width: 120px; }
+.the-slash { color: var(--zinc-400); }
+#asked-for { flex: 1 1 340px; min-width: 240px; }
+#start-a-run {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: var(--a-card);
+  background: var(--zinc-900);
+  color: #fff;
+  cursor: pointer;
+}
+#start-a-run:disabled { background: var(--zinc-400); cursor: progress; }
+
+/* **The whole line, and never a colour alone.** A card and a status line are read by somebody
+   who may not distinguish red from green, and a refused gate in the wrong colour is the one
+   mistake on this board that would have somebody approve something they meant to refuse. */
+.what-happened { flex: 1 1 100%; margin: 2px 0 0; font-size: 13px; min-height: 1.2em; }
+.what-happened.is-working { color: var(--violet-800); }
+.what-happened.is-refused { color: var(--red-700); }
+
+.the-story .where-it-is {
+  font-size: 13px;
+  margin: 0 0 16px;
+  padding: 7px 11px;
+  border-radius: var(--a-card);
+  border: 1px solid var(--zinc-200);
+  background: var(--zinc-50);
+}
+.the-story .where-it-is.is-waiting {
+  border-color: var(--amber-200);
+  background: var(--amber-50);
+  color: var(--zinc-800);
+  font-weight: 600;
+}
+.the-story .where-it-is.is-working { color: var(--violet-800); }
+.the-story .where-it-is.is-stuck {
+  border-color: var(--red-400);
+  background: var(--red-background);
+  color: var(--red-700);
+}
+.the-collections { color: var(--zinc-500); }
+
+.the-story {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(560px, 100%);
+  background: white;
+  border-left: 1px solid var(--zinc-200);
+  box-shadow: -8px 0 24px rgb(24 24 27 / 8%);
+  overflow-y: auto;
+  padding: 24px 28px 64px;
+}
+.close-the-story {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--zinc-400);
+  cursor: pointer;
+}
+.the-story h2 { margin: 0 0 2px; font-size: 18px; }
+.the-story .where-it-came-from { color: var(--zinc-500); font-size: 13px; margin: 0 0 18px; }
+
+.the-gates { list-style: none; padding: 0; margin: 0 0 24px; }
+.the-gates li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--zinc-100);
+  font-size: 13px;
+}
+.the-gates .verdict { font-weight: 600; }
+.verdict.was-approved { color: var(--emerald-800); }
+.verdict.was-refused { color: var(--red-700); }
+.verdict.is-awaiting { color: #973c00; }
+.verdict.not-yet { color: var(--zinc-400); font-weight: 400; }
+.the-gates .who { color: var(--zinc-500); margin-left: auto; }
+.the-gates .the-reason { color: var(--zinc-600); display: block; font-size: 12px; }
+
+.the-gate-to-answer {
+  background: var(--amber-50);
+  border: 1px solid var(--amber-200);
+  border-radius: var(--a-card);
+  padding: 14px 16px;
+  margin-bottom: 24px;
+}
+.the-gate-to-answer h3 { margin: 0 0 2px; font-size: 14px; }
+.the-gate-to-answer p { margin: 0 0 12px; color: #973c00; font-size: 13px; }
+.the-gate-to-answer label { display: block; font-size: 12px; color: var(--zinc-600); margin-bottom: 4px; }
+.the-gate-to-answer input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--zinc-300);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.the-gate-to-answer input:disabled { background: var(--zinc-100); }
+.answer-the-gate { display: flex; gap: 8px; }
+.answer-the-gate button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 7px;
+  border: 1px solid var(--zinc-300);
+  background: white;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.answer-the-gate button.approve:enabled { background: var(--emerald-500); border-color: var(--emerald-500); color: white; }
+.answer-the-gate button.refuse:enabled { background: var(--red-700); border-color: var(--red-700); color: white; }
+.answer-the-gate button:disabled { color: var(--zinc-400); cursor: not-allowed; }
+.why-the-button-is-off { font-size: 12px; color: #973c00; margin: 8px 0 0; }
+
+h3.a-heading { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--zinc-500); margin: 0 0 8px; }
+.a-note { border-left: 2px solid var(--violet-200); padding: 2px 0 2px 10px; margin: 0 0 12px; font-size: 13px; white-space: pre-wrap; }
+.a-note .who { color: var(--violet-800); font-weight: 600; }
+.a-said { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+.a-said li { padding: 4px 0; border-bottom: 1px solid var(--zinc-100); display: flex; gap: 10px; }
+.a-said .when { color: var(--zinc-400); font-variant-numeric: tabular-nums; flex: none; width: 62px; }
