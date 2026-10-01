@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 37 tests, 6s, no network, no model, no credential, no container
+uv run pytest -q     # 42 tests, 5s, no network, no model, no credential, no container
 
 # The e2e tier is not separated here: `uv run pytest` is the whole suite, and a live-model run is
 # driven through the same board by starting the server with a `.env` in place.
@@ -356,6 +356,30 @@ Stated rather than left to be discovered.
 - ~~**The supervisor still has not fired inside a whole run.**~~ **It has** — on a whole run
   through the real graph, and on that run it found the wiring was broken in a way no routing test
   could see.
+- **The rule that would catch an unobservable change was never wrong — it was never asked.** The
+  check that a test passes with the change undone runs the *whole suite* with the change removed,
+  precisely so it can ask "does anything notice". But it returns early when the plan named no
+  test, on the reasoning that a plan adding no test has nothing to observe the change. That is true
+  of the plan's tests and false of the suite, and it is the exact case that mattered: the Dockerfile
+  run's plan named no test, so the one rule that could have said *"nothing here notices this
+  healthcheck"* stayed silent and a policy had to notice it by reading two suite outputs.
+  **The docstring now argues against its own early return**, and
+  `tests/test_whether_anything_observed_the_change.py` pins the gap so whoever closes it is closing
+  something named.
+- **Not fixed, because the obvious fix is worse.** Deleting the early return refuses every
+  documentation change this pipeline is asked for — the truthful answer to "did anything notice?"
+  about a README is no, and there was nothing wrong. Separating a silent change from a harmless one
+  needs to know whether the change touched something a suite could read, and
+  `refuse_a_change_nothing_observed` is not told what the change wrote. That is a design decision
+  with a cost on both sides, and it is written down rather than made overnight.
+- **An end-to-end proof of the *delivery* repair was attempted and abandoned, and the reason is the
+  test harness, not the code.** The board clears a question before it records the answer, so a run
+  that repairs and re-presents the verification looks identical to the race every other test in
+  that file works around. Four shapes of loop were tried — count the gates, count twice the gates,
+  report-finished-by-returning-`None`, and count quiet moments per artifact — and each failed on
+  its own cleverness rather than on anything to do with the graph. The file was reverted rather than
+  left churning, and what the second broken node has is the check that no node returning a `Command`
+  also carries an edge, proved by re-adding the edge and watching the test name it.
 - **And a live model has now made it seven gates on the same repository, twice refused by the
   policy and never once by an exception.** The first refusal is still the strongest thing in this
   file:

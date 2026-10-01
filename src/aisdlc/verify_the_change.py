@@ -128,8 +128,27 @@ def refuse_a_change_nothing_observed(
     **Asked only of a change that kept the suite green.** A suite that is already red has not
     been shown to observe anything, and the red suite is `ASuiteThatWentRedIsNotADeliveryError`
     at the delivery to say -- reporting both from here would throw away the failing assertions,
-    which are what a person needs most. **And a change that named no test is not asked**,
-    because a run whose plan adds nothing to the suite has nothing to observe it.
+    which are what a person needs most.
+
+    **And a change that named no test is not asked, which is this rule's one gap and the argument
+    below is deliberately the other way round.** The early return reads "a plan that adds no test
+    has nothing to observe the change", and that is true of the *plan's tests* and false of the
+    suite: the whole suite can notice a change the plan said nothing about. The function's own
+    last paragraph commits to asking the stronger question -- does *anything* notice -- and the
+    early return quietly narrows it back.
+
+    **So this is written down rather than fixed, because the obvious fix is worse.** Deleting the
+    condition would refuse every documentation change, every comment and every version bump this
+    pipeline is ever asked for, because the truthful answer to "did anything notice?" about a
+    README is no and there was nothing wrong. Telling a silent change apart from a harmless one
+    needs to know whether the change touched something a suite could read, and this function is
+    not told what the change wrote. A real run is what made it worth writing down: asked to retime
+    a Dockerfile healthcheck, this system's policy caught it -- *a HEALTHCHECK whose path, port, or
+    interval is wrong does not fail loudly, the container simply reports unhealthy forever* -- and
+    this function said nothing at all, because the plan named no test.
+
+    `tests/test_whether_anything_observed_the_change.py` pins the gap, so whoever closes it is
+    closing something named rather than something discovered.
 
     **The whole repository's suite and not only the new tests.** A filter would need to know how
     this project's runner names a single test file, and a name invented here is a name nobody
