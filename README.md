@@ -850,6 +850,7 @@ Stated rather than left to be discovered.
   | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
   | `test_a_python_repository_can_be_verified.py` | that a Python repository's suite is run with pip and pytest rather than npm, and that its collection listing is read |
+  | `test_every_finding_is_held_to_saying_something.py` | that every finding this pipeline produces names the field it cannot leave empty, and that those fields exist on the model, so an empty artifact cannot be read as an answer |
   | `test_every_declared_neighbouring_pair_has_a_case.py` | that every two agents the pipeline runs back to back have a pair test, and that the order those pairs are cut from is the router's own order rather than a list somebody typed |
   | `test_every_stage_that_reasons_about_files_is_shown_them.py` | that no stage is handed a directory listing and then writes findings about files nobody in it has read |
 

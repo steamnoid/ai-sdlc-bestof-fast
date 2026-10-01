@@ -41,6 +41,7 @@ from tests.the_neighbouring_agent_pairs import (
     THE_NEIGHBOURING_PAIRS,
     ANeighbouringPair,
 )
+from tests.what_an_artifact_must_have_said import WHAT_EVERY_FINDING_MUST_HAVE_SAID
 
 pytestmark = pytest.mark.e2e
 
@@ -55,6 +56,14 @@ WHAT_LOOKS_LIKE_A_PATH = re.compile(
     r"\b(?:[\w.-]+/)+[\w.-]+\.(?:py|md|toml|json|yaml|yml|ini|txt)\b"
 )
 
+# A link to a file is not a path in the repository, and the two are the same characters: an agent
+# citing .github/workflows/gate.yml by its blob URL is citing it correctly. A first run reported
+# github.com/steamnoid/…/blob/main/.github/workflows/gate.yml as a path one of them invented,
+# which is the opposite of what happened. So the URLs come out before the paths are read.
+WHAT_IS_A_LINK_RATHER_THAN_A_PATH = re.compile(
+    r"(?:https?://|www\.)?[-.\w]*(?:github\.com|githubusercontent\.com)/\S*"
+)
+
 A_REQUEST = a_request_about(
     "a command may only run inside the checkout this run confined itself to"
 )
@@ -64,7 +73,8 @@ def _every_path_named_in(texts: list[str]) -> set[str]:
     """Every path-shaped token any of the artifacts mention."""
     found: set[str] = set()
     for text in texts:
-        found.update(WHAT_LOOKS_LIKE_A_PATH.findall(text))
+        without_the_links = WHAT_IS_A_LINK_RATHER_THAN_A_PATH.sub(" ", text)
+        found.update(WHAT_LOOKS_LIKE_A_PATH.findall(without_the_links))
     return found
 
 
@@ -189,6 +199,9 @@ def test_two_neighbouring_agents_do_not_contradict_each_other(
 
     the_first, the_second = _run_the_pair(a_pair, the_cast, the_clone)
 
+    _what_each_had_to_have_said(the_first, the_cast)
+    _what_each_had_to_have_said(the_second, the_cast)
+
     what_is_in_the_clone = _what_is_in_the_clone(the_clone)
     everything_they_said = _every_artifact_text(the_first) + _every_artifact_text(the_second)
 
@@ -242,6 +255,28 @@ def _run_the_pair(
     )
 
 
+def _what_each_had_to_have_said(the_artifact: object, the_cast: object) -> None:
+    """Every finding has to have said something, from the rule the default tier holds them to.
+
+    **Applied per artifact rather than per pair**, because two agents in one pair can each be
+    empty and the pair still "agrees" — an empty report and an empty report contradict nothing.
+    The rule and the fields it names live in `tests/what_an_artifact_must_have_said.py`, and that
+    they name real fields is checked there without a model, so this can be a lookup.
+    """
+    for a_rule in WHAT_EVERY_FINDING_MUST_HAVE_SAID:
+        if not isinstance(the_artifact, a_rule.artifact):
+            continue
+        what_it_said = [
+            getattr(the_artifact, a_field, None) for a_field in a_rule.at_least_one_of
+        ]
+        if any(a_value and str(a_value).strip() for a_value in what_it_said):
+            return
+        raise AssertionError(
+            f"{a_rule.artifact.__name__} came back with none of "
+            f"{list(a_rule.at_least_one_of)} filled in. {a_rule.why_an_empty_one_is_a_fault}"
+        )
+
+
 def _what_must_hold_between_them(
     a_pair: ANeighbouringPair,
     the_first: object,
@@ -272,6 +307,12 @@ def _what_must_hold_between_them(
 
     if a_pair.first == "plan_the_tests":
         the_modules = " ".join(getattr(the_first, "modules", []) or []).lower()
+        assert the_modules, (
+            "the architecture report names no modules, so there is nothing for the QA plan's "
+            "scenarios to agree or disagree with. A report that lists nothing agrees with "
+            "everything, which is the same as saying nothing — and it is the reason a pair test "
+            "needs a claim about emptiness as well as a claim about contradiction"
+        )
         for a_path in sorted(_every_path_named_in(_every_artifact_text(the_second))):
             assert a_path.lower() in the_modules or Path(a_path).name.lower() in the_modules, (
                 f"{a_path!r} is in the architecture report but the QA plan was already planning "
