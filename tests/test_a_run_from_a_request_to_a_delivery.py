@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from langgraph.types import Command
 
 from aisdlc.agents.apply_the_plan import ADeliveredChange
 from aisdlc.agents.architecture_report import ArchitectureReport
@@ -46,15 +47,25 @@ from aisdlc.agents.security_report import SecurityReport
 from aisdlc.agents.verification_report import VerificationReport
 from aisdlc.agents.what_an_agent_judged import WhatAnAgentJudged
 from aisdlc.agents.what_the_planner_concluded import ImplementationPlanAnswer
+from aisdlc.application.a_run_being_assembled import a_run_beginning_at
 from aisdlc.application.the_runs_this_process_is_holding import TheRunsThisProcessIsHolding
+from aisdlc.approval.approval_decision import ApprovalDecision
+from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
+from aisdlc.domain.role import Role
 from aisdlc.domain.stage import Stage
-from aisdlc.graph.lifecycle import the_lifecycle
+from aisdlc.domain.work_item import a_work_item_commissioned_for_an_agent
+from aisdlc.graph.lifecycle import a_config, the_lifecycle
+from aisdlc.graph.router import WHERE_AN_APPROVED_ARTIFACT_LEADS
+from aisdlc.graph.supervise_a_repair import WHERE_THE_IMPLEMENTATION_IS_REWRITTEN
 from aisdlc.graph.the_agents_this_run import TheAgentsThisRun
 from aisdlc.graph.the_delivery_of_this_run import TheDeliveryOfThisRun
 from aisdlc.store.the_board_reads import AColumnOfTheBoard
-from aisdlc.store.the_register_of_work_items import the_work_item_registered_at
-from aisdlc.store.where_the_register_lives import the_register_lives_at
+from aisdlc.store.the_register_of_work_items import (
+    the_work_item_a_commission_registers,
+    the_work_item_registered_at,
+)
+from aisdlc.store.where_the_register_lives import holding_the_register, the_register_lives_at
 from aisdlc.tools.github_client import Addresses
 from aisdlc.tools.github_clone_repository import RepositoryToClone
 from aisdlc.tools.github_create_branch import PushedBranch
@@ -876,4 +887,200 @@ def test_a_refusal_inside_a_whole_run_reaches_the_supervisor_and_the_run_finishe
     assert "health.py" in what_the_supervisor_was_told[0], (
         "the supervisor was told a run stopped but not which file was left alone, so it is being "
         "asked to judge without the one fact the refusal exists to carry"
+    )
+
+
+def _walk_the_run_to_the_end(
+    graph, work_item, projects_root: Path, the_gates_it_asked_about: list[str]
+) -> None:
+    """Answer every gate until the run stops asking, driving the graph itself rather than the board.
+
+    **Four attempts at this went through the board first, and every one of them failed on the board
+    rather than on the graph.** The board clears a question when it records the answer, which
+    happens after the POST has returned, so a poll right after answering sees the same question
+    again — and a run that *repairs* asks about a gate it has already asked about, which looks
+    exactly like that race. Count the gates and you stop on a repeat; count twice the gates and you
+    answer a delivery gate twice, which leaves a run that is approved-everything and delivered
+    nothing; report "finished" by returning `None` and `_wait_until` reads falsy as "not yet"; and
+    count quiet moments per artifact, which re-answers a gate whenever the run pauses. Four shapes,
+    four failures, none of them about a repair.
+
+    **So this does not use the board at all.** The gate asks with `interrupt`, the graph pauses,
+    and the answer goes back with `Command(resume=...)` — which is exactly what the production
+    holder does, and what the board does on its behalf. Nothing here polls, so there is no race to
+    lose and no question lifecycle to reason about. The graph is the subject; the board is a
+    browser.
+    """
+    where_from = a_run_beginning_at(work_item, projects_root)
+    the_config = a_config(work_item.work_item_id)
+
+    while True:
+        what_the_run_asked: object = None
+        for what_happened in graph.stream(where_from, the_config):
+            if "__interrupt__" not in what_happened:
+                continue
+            what_the_run_asked = what_happened["__interrupt__"][0].value
+            break
+        if what_the_run_asked is None:
+            return
+
+        the_gates_it_asked_about.append(what_the_run_asked.artifact_id)
+        where_from = Command(
+            resume=ApprovalDecision(
+                work_item_id=work_item.work_item_id,
+                artifact_id=what_the_run_asked.artifact_id,
+                artifact_version=what_the_run_asked.artifact_version,
+                approved=True,
+                decided_by="a person reading a test",
+                reason="it is right",
+                decided_at=datetime.now(UTC),
+            )
+        )
+        how_many_gates_there_can_be = len(WHERE_AN_APPROVED_ARTIFACT_LEADS) * 2
+        if len(the_gates_it_asked_about) > how_many_gates_there_can_be:
+            pytest.fail(
+                f"this run has been asked about {len(the_gates_it_asked_about)} gates and is still "
+                f"asking: {the_gates_it_asked_about}. Eight gates plus one repair is twelve, so "
+                "this run is going round something"
+            )
+
+
+def test_a_red_suite_reaches_the_supervisor_and_the_run_delivers_afterwards(
+    a_repository_to_clone_into: Path, a_register_and_a_projects_root, tmp_path: Path
+) -> None:
+    """The second broken node, proved on a run that goes all the way — and the proof that was
+    abandoned on Tuesday because the harness fought back.
+
+    **The delivery node carried the same defect the implementer did and was found by reading for
+    it.** It returns a `Command(goto=supervisor)` when a change leaves the suite red, and the graph
+        "an edge out of itself as well as returning a Command, which is the run that"
+        "died of two writes to one state key in a single step"
+    to `mark_the_work_item_delivered` in the same step — and LangGraph refused the run for writing
+    `requested_stage` twice. That is how every repair in this system died, and no unit test could
+    see it because they read the `Command` rather than building the graph.
+
+    **A red suite is the refusal a real run produces most often**, so this is the path most worth
+    walking. The suite goes red, the delivery refuses, the supervisor sends it back, the change is
+    made again, the suite is green, and the run delivers. Refusing forever would prove only that
+    the route exists: the second attempt is where a half-fixed graph shows up.
+
+    **Re-adding the edge this node used to carry makes this test fail, though not with the error
+    the implementer's defect produced.** With the edge back, this run dies of
+    `DONE cannot move to AWAITING_AGENT_PICKUP` rather than of `Can receive only one value per
+    step`. Both are a dead run and both are invisible to a unit test, which is the point; but the
+    symptom is not the one this test's own message predicts, and a guard that names the wrong
+    failure is half a guard. It was checked by breaking the thing rather than by reading it, which
+    is how the two text-searching guards in this repository were caught as well.
+    """
+
+    from aisdlc.graph.lifecycle import the_lifecycle
+    from aisdlc.store.the_register_of_work_items import (
+        the_work_item_registered_at,
+    )
+
+    _, the_projects_root = a_register_and_a_projects_root
+    what_the_supervisor_was_told: list[str] = []
+    how_many_times_the_change_was_attempted = {"count": 0}
+    a_green_suite = SuiteOutcome(
+        exit_code=0, passed=True, dependencies_installed=True, output="74 passed"
+    )
+    a_red_suite = SuiteOutcome(
+        exit_code=1,
+        passed=False,
+        dependencies_installed=True,
+        output="1 failed, 73 passed -- the health endpoint answered 404",
+    )
+
+    def a_delivery_whose_suite_goes_red_once(clone, repository, implementation_plan):
+        """Green on the second attempt and red on the first, against a plan nobody touches.
+
+        **The plan is the same both times, which is what makes this the delivery's refusal rather
+        than a planner's.** The plan was approved by a person and the suite says the change it
+        describes is wrong, so nothing about the plan can be the answer and the only honest answer
+        is "do it again, properly" — which is what the supervisor returns.
+        """
+        how_many_times_the_change_was_attempted["count"] += 1
+        the_suite_after = (
+            a_red_suite
+            if how_many_times_the_change_was_attempted["count"] == 1
+            else a_green_suite
+        )
+        return ADeliveredChange(
+            written=[
+                FileToWrite(path="health.py", content="def health():\n    return 1\n")
+            ],
+            verification=VerificationReport(
+                suite_before_the_change=a_green_suite, suite_after_the_change=the_suite_after
+            ),
+            what_the_implementer_said="added the endpoint the requirements asked for",
+        )
+
+    def a_supervisor_that_says_do_the_change_again(
+        work_item, projects_root, what_the_run_stopped_on
+    ) -> Command:
+        what_the_supervisor_was_told.append(str(what_the_run_stopped_on))
+        return Command(
+            goto=WHERE_THE_IMPLEMENTATION_IS_REWRITTEN,
+            update={"repair": "the suite went red, so the change was not what the plan described"},
+        )
+
+    working_agents = _the_agents_no_model_would_produce()
+    the_graph = the_lifecycle(
+        agents=TheAgentsThisRun(
+            **{
+                **working_agents.__dict__,
+                "apply_and_verify": a_delivery_whose_suite_goes_red_once,
+                "supervise": a_supervisor_that_says_do_the_change_again,
+            }
+        ),
+        delivery=_a_delivery_that_only_writes_down(a_repository_to_clone_into),
+        plan_the_clone=_cloning_from_a_local_repository(a_repository_to_clone_into),
+    )
+
+    the_work_item = a_work_item_commissioned_for_an_agent(
+        work_item_id="a-red-suite-that-was-repaired",
+        repository=Repository(owner="an", name="owner"),
+        accountable_role=Role.DEV,
+        commissioned_by="a person reading a test",
+        requested=a_request_about("add a health endpoint", ""),
+    )
+    with holding_the_register() as register:
+        the_work_item_a_commission_registers(register, the_work_item)
+
+    the_gates_it_asked_about: list[str] = []
+    _walk_the_run_to_the_end(
+        the_graph, the_work_item, the_projects_root, the_gates_it_asked_about
+    )
+
+    with holding_the_register() as register:
+        the_stage_the_register_holds = the_work_item_registered_at(
+            register, the_work_item.work_item_id
+        ).stage
+
+    assert how_many_times_the_change_was_attempted["count"] == 2, (
+        f"the change was attempted {how_many_times_the_change_was_attempted['count']} times, so a "
+        "refused delivery did not send the run back to the implementation — and this node carried "
+        "an edge out of itself as well as returning a Command, which is the run that died of two "
+        "writes to one state key in a single step"
+    )
+    assert len(what_the_supervisor_was_told) == 1, (
+        f"the supervisor was asked {len(what_the_supervisor_was_told)} times for one refusal"
+    )
+    assert "404" in what_the_supervisor_was_told[0], (
+        "the supervisor was told a suite went red without being told what the suite said, and a "
+        "refusal whose whole argument is the suite's own output has to carry it"
+    )
+    # **The verification gate is asked twice, and once is not enough.** This refusal happened
+    # *after* that gate — the delivery is the last thing a run does — so repairing it re-walked the
+    # implementation and produced a second verification for somebody to rule on. A refusal from the
+    # implementer is the opposite: it happens before a verification exists, so no gate repeats.
+    # Two repairs, two shapes, and a test written for either alone would be wrong about the other.
+    assert the_gates_it_asked_about.count("VerificationReport") == 2, (
+        f"the verification was asked about "
+        f"{the_gates_it_asked_about.count('VerificationReport')} times in a run that repaired "
+        f"after its delivery was refused: {the_gates_it_asked_about}"
+    )
+    assert the_stage_the_register_holds is Stage.DONE, (
+        "the repair worked, every gate was approved, and the register has this run at "
+        f"{the_stage_the_register_holds.name} rather than DONE"
     )

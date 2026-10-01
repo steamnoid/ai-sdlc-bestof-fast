@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 50 tests, 6s, no network, no model, no credential, no container
+uv run pytest -q     # 51 tests, 6s, no network, no model, no credential, no container
 
 # The e2e tier is not separated here: `uv run pytest` is the whole suite, and a live-model run is
 # driven through the same board by starting the server with a `.env` in place.
@@ -372,14 +372,22 @@ Stated rather than left to be discovered.
   needs to know whether the change touched something a suite could read, and
   `refuse_a_change_nothing_observed` is not told what the change wrote. That is a design decision
   with a cost on both sides, and it is written down rather than made overnight.
-- **An end-to-end proof of the *delivery* repair was attempted and abandoned, and the reason is the
-  test harness, not the code.** The board clears a question before it records the answer, so a run
-  that repairs and re-presents the verification looks identical to the race every other test in
-  that file works around. Four shapes of loop were tried — count the gates, count twice the gates,
-  report-finished-by-returning-`None`, and count quiet moments per artifact — and each failed on
-  its own cleverness rather than on anything to do with the graph. The file was reverted rather than
-  left churning, and what the second broken node has is the check that no node returning a `Command`
-  also carries an edge, proved by re-adding the edge and watching the test name it.
+- ~~**An end-to-end proof of the *delivery* repair was attempted and abandoned.**~~ **It was the
+  harness, and the answer was to stop using it.** The board clears a question before it records the
+  answer, so a run that repairs and re-presents the verification looks identical to the race every
+  other test in that file works around. Four shapes of loop were tried — count the gates, count
+  twice the gates, report-finished-by-returning-`None`, and count quiet moments per artifact — and
+  each failed on its own cleverness rather than on anything to do with the graph. **The graph
+  compiles with its own checkpointer and its gates ask with `interrupt`, so the whole run can be
+  walked without the board at all**: stream it, answer with `Command(resume=...)`, stream again.
+  Nothing polls, so there is no race to lose. The delivery repair is now proved on a run that goes
+  all the way — suite red, delivery refuses, supervisor sends it back, change made again, suite
+  green, run reaches `DONE`.
+  **And re-adding the edge the delivery node used to carry makes that test fail**, which is the only
+  thing that distinguishes a check that is armed from one that is merely green. Not with the error
+  the implementer's defect produced — this one dies of `DONE cannot move to AWAITING_AGENT_PICKUP`
+  rather than of `Can receive only one value per step`. Both are a dead run and both are invisible
+  to a unit test, which is the whole point of walking the graph.
 - **And a live model has now made it seven gates on the same repository, twice refused by the
   policy and never once by an exception.** The first refusal is still the strongest thing in this
   file:
