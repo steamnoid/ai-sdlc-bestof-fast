@@ -568,6 +568,25 @@ That last one is worth being precise about, because it is the whole thesis in on
 that has already written the code is still not a delivery until the suite agrees**, and the suite
 here said no.
 
+**And the two failures are the run disagreeing with its own instructions, which is the most
+interesting thing in it.** The request stated, as a decision to be recorded before anything was
+written:
+
+> The project root reaches the runner as an explicit named argument on the function that runs the
+> command, `may_run_only_inside`, of type `str | None` … it does not read an environment variable.
+
+What the run wrote reads `AISDLC_WHERE_COMMANDS_MAY_RUN` from `os.environ`. So **the confinement
+is implemented, correctly and carefully** — paths resolved on both sides, a string prefix
+explicitly refused because `/srv/checkout-2` starts with `/srv/checkout` — but it is wired the way
+the request told it not to be, and its own tests failed partly because of it.
+
+The second failure is a type: the test compares the recorded `cwd` against `str(...)` while the
+code hands `subprocess` a resolved path. Both work; only one of them is what the test said.
+
+**Both are one sentence long to fix, and neither was found by reading the code.** They were found
+by the suite the run wrote, in the container, which is the whole argument for a runner that can
+verify a repository at all.
+
 **And the duplicate rule refused a real issue the day it was written.** It asked to teach
 `shell.run_tests` a Python repository; the copy already had an open issue about the trust boundary
 of `shell.run_command`. Different files, different problems — and the rule fired anyway, because
