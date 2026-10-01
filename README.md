@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 36 tests, 5s, no network, no model, no credential, no container
+uv run pytest -q     # 37 tests, 6s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -337,18 +337,19 @@ Stated rather than left to be discovered.
   and read the `Command` it returns; the defect was entirely in the wiring, and no unit test
   builds the graph. The node now names its own destination on both outcomes and carries no edge,
   which is what the supervisor already did and for the same reason.
-- **A repair re-presents the verification gate, and that is correct.** A person approved it *for a
-  change*; the run then found the change did not happen; asking again is the only honest thing
-  left, and delivering on that approval would be delivering something nobody saw. It is the reason
-  a whole-run test cannot use the "nobody has answered yet" wait — one gate genuinely repeats
-  among eight that are each read twice by a race in the same endpoint.
-- **Open, and not answered here: a run that repairs does not reach `DONE`.** A run that does not
-  repair ends at `DONE`, and the one that repairs ends with all eight gates approved, a delivery
-  approved, and the register still at `AWAITING_HUMAN_APPROVAL`. That is either a defect in the
-  delivery transition after a repair or an artefact of the test's double, and this work has not
-  isolated which — so the test asserts what it can see (the run stopped asking, every gate was
-  seen, the supervisor was asked once about one file) and the register is written down here
-  instead of asserted as though it were right.
+- **A repairing run does re-present the verification gate, and that is correct.** A person
+  approved it *for a change*; the run then found the change did not happen; asking again is the
+  only honest thing left, and delivering on that approval would be delivering something nobody
+  saw. It is why a whole-run test cannot use the "nobody has answered yet" wait for this shape.
+- ~~**Open: a run that repairs does not reach `DONE`.**~~ **False, and it was this repository's
+  own test lying.** A repairing run reaches `DONE`, like any other. The run that appeared to stop
+  at `AWAITING_HUMAN_APPROVAL` was answering every question twice — the graph clears a question
+  when it records the answer, which happens after the POST returns, so the second read is the race
+  every other test in the file works around — and a second answer to the *delivery* gate left the
+  run approved-everything and delivered nothing. Three attempts at that test failed the same way,
+  each looking like impatience rather than the wrong question: answer-whatever-appears,
+  count-sixteen, and report-finished-by-returning-`None`. The fourth used the pattern the other
+  tests already use, and the defect was not there.
 - ~~**The supervisor still has not fired inside a whole run.**~~ **It has.** It has been asked, by a real model,
   with a real card and a real refusal, and it answered correctly — and its routing is now covered
   for all four refusals that reach it. What has not happened is an end-to-end run tripping one,

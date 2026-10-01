@@ -35,6 +35,7 @@ from pathlib import Path
 import pytest
 from langgraph.types import Command
 
+import aisdlc.graph.lifecycle as lifecycle_module
 import aisdlc.verify_the_change as verify_the_change
 from aisdlc.agents import implement_the_plan
 from aisdlc.domain.commissioned_request import a_request_about
@@ -842,4 +843,62 @@ def test_every_refusal_the_change_can_raise_is_routed_somewhere() -> None:
         f"{', '.join(unrouted)} can stop a run and nothing hands it to the supervisor. It is a "
         f"refusal a person could judge, which is the whole reason the supervisor exists, and a "
         f"run that hits it stops instead of asking"
+    )
+
+
+def test_no_node_that_chooses_its_own_destination_still_carries_an_edge() -> None:
+    """The rule both broken nodes broke, checked against the graph rather than against either node.
+
+    **Every repair in this system died here, and every refusal-routing test passed.** A node that
+    returns `Command(goto=...)` on one outcome and a plain state update on the other, and that
+    the graph *also* gives a static edge to, runs both ways in the same step: the run is diverted
+    to the supervisor and carries on down the ordinary path, the two arrive at the same node, both
+    write `requested_stage`, and LangGraph refuses the run —
+
+        At key 'requested_stage': Can receive only one value per step.
+
+    The refusal was correct, the routing was correct, the supervisor ran, and the run still died at
+    the moment the repair was being performed, with a message about concurrent writes rather than
+    about the repair. Twelve tests could not see it because they call the function and read the
+    `Command`; the defect was entirely in the wiring, and nothing built the graph.
+
+    **Two nodes had the shape, and fixing the first found the second.** The node that implements a
+    plan was fixed by running a whole run. The node that delivers a change had the same edge and
+    the same `Command`, and was found by reading for the shape afterwards — which is the argument
+    for the check being a check and not a habit.
+
+    **So the rule is asserted about the graph's own wiring.** A node whose function can return a
+    `Command` must have no `add_edge` out of it, because a node that names its own destination and
+    a node that is told its destination are two designs, and a graph holding both cannot say which
+    one it meant.
+    """
+    import re
+
+    the_lifecycle_source = Path(lifecycle_module.__file__).read_text()
+    # **The nodes whose functions return a `Command`, not the nodes they name.** The first
+    # version of this check listed the two *destinations* — `write_what_the_change_says` and
+    # `mark_the_work_item_delivered` — and failed on `add_edge("write_what_the_change_says",`,
+    # which is correct and harmless: a node somebody else sends control to is *supposed* to have
+    # an edge out. The node that must not have one is the one that reads the state and decides,
+    # because that decision and the edge are two answers to one question.
+    the_nodes_that_choose_their_own_destination = [
+        "make_and_verify_the_change",
+        "deliver_this_run",
+    ]
+
+    for a_node in the_nodes_that_choose_their_own_destination:
+        still_being_told_where_to_go = re.search(
+            rf"add_edge\(\s*[\"']{re.escape(a_node)}[\"']\s*,", the_lifecycle_source
+        )
+        assert not still_being_told_where_to_go, (
+            f"`{a_node}` returns a Command naming its own destination, and the graph also carries "
+            "an edge out of it. Both fire in the same step, so a run that refuses is diverted to "
+            "the supervisor *and* carries on down the ordinary path, and LangGraph refuses it for "
+            "writing a state key twice. That is how every repair in this system died while every "
+            "routing test passed."
+        )
+
+    assert len(the_nodes_that_choose_their_own_destination) == 2, (
+        "a third node joined this shape and this list has not been updated, so the check now "
+        "covers two of the places the defect can sit"
     )

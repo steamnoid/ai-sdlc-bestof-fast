@@ -774,6 +774,10 @@ def _the_delivery_stage(graph: StateGraph, delivery: TheDeliveryOfThisRun) -> No
     # into `DONE` exists in the table and the run was not making it.
     graph.add_node("mark_the_work_item_delivered", mark_the_work_item_delivered)
     graph.add_node("apply_the_delivery_of_the_run", transition_the_work_item)
-    graph.add_edge("deliver_this_run", "mark_the_work_item_delivered")
+    # **No edge out of `deliver_this_run`; the node names where it goes.** Same reason as the
+    # node that implements a plan: this one also returns a `Command(goto=...)` when a suite went
+    # red, and an edge here fires alongside that goto, sending the run to the supervisor and down
+    # the ordinary delivery path in the same step. It is the same defect that made every repair
+    # crash the run, found here by reading for one shape rather than by running into it again.
     graph.add_edge("mark_the_work_item_delivered", "apply_the_delivery_of_the_run")
     graph.add_edge("apply_the_delivery_of_the_run", THE_RUN_IS_OVER)

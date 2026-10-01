@@ -42,6 +42,19 @@ from aisdlc.tools.our_own_runs import (
 )
 from aisdlc.tools.run_tests import SuiteOutcome
 
+WHERE_THE_RUN_IS_MARKED_DELIVERED = "mark_the_work_item_delivered"
+"""The node this one hands to on success, named here because it is part of what this node does.
+
+**There is no edge out of this node, for the same reason there is none out of the node that
+implements a plan.** This node returns a `Command` on both outcomes — a red suite goes to the
+supervisor, a delivery goes to `mark_the_work_item_delivered` — and an edge out of a node whose
+other outcome is a `Command(goto=...)` fires *alongside* whichever `goto` it chose. That is not a
+hypothetical: it is how every repair in this system used to die, with LangGraph refusing the run
+for writing `requested_stage` twice in one step. The implementer had the same shape; this node was
+found by reading for it once the first one was fixed, because the defect has one shape and one
+shape has more than one place it can sit.
+"""
+
 THE_ARTIFACT_DELIVERY_PRODUCES = "PullRequestRequest"
 ITS_FIRST_VERSION = 1
 
@@ -283,7 +296,10 @@ def open_the_delivery(
     # whole output is that one string.
     a_run_was_delivered(state["work_item"].work_item_id, the_pull_request.address)
 
-    return {"opened_pull_request": the_pull_request}
+    return Command(
+        goto=WHERE_THE_RUN_IS_MARKED_DELIVERED,
+        update={"opened_pull_request": the_pull_request},
+    )
 
 
 def _who_approved_the_verification(state: AgentState) -> str:

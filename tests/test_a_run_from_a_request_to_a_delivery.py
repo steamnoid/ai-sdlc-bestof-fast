@@ -694,7 +694,7 @@ def test_a_refusal_inside_a_whole_run_reaches_the_supervisor_and_the_run_finishe
     from aisdlc.domain.repository import Repository as ARepository
     from aisdlc.graph.supervise_a_repair import WHERE_THE_IMPLEMENTATION_IS_REWRITTEN
 
-    _, the_projects_root = a_register_and_a_projects_root
+    the_register, the_projects_root = a_register_and_a_projects_root
     os.environ["AISDLC_PROJECTS_DIR"] = str(the_projects_root)
 
     what_the_supervisor_was_told: list[str] = []
@@ -803,20 +803,27 @@ def test_a_refusal_inside_a_whole_run_reaches_the_supervisor_and_the_run_finishe
         # a run looks like for the instant between two gates, which is the very race
         # `_wait_until_the_gate_is_asking` was written to close. So the loop stops on the absence
         # of a question *and* on having seen every gate in the router, which cannot both be true
-        # early by accident.
+        # **The established pattern from the other tests here, and it turns out to be right for a
+        # run that repairs.** A repairing run does *not* re-present a gate. The refusal happens at
+        # the implementer, before the verification has been written, so the repair re-does the
+        # implementation and the verification gate is presented once, like every other gate.
+        # Every question a loop reads twice here is the race `_wait_until_the_gate_is_asking`
+        # exists to close — and answering that second reading is not harmless: the run ended with
+        # all eight gates approved and had never delivered anything.
+        #
+        # Three attempts got this wrong first, and all three looked like patience rather than the
+        # wrong question: answer whatever appears (delivers nothing), count sixteen (asks *how
+        # many* instead of *why*), and report "finished" by returning `None`, which `_wait_until`
+        # reads as "not yet" and which spent thirty seconds waiting for a ninth question that the
+        # eighth had already delivered.
         the_gates_seen: set[str] = set()
-        for _answer in range(_how_many_questions_this_run_is_asked):
-            the_next_question = the_board.get(f"/api/runs/{the_work_item_id}").json()[
-                "the_question"
-            ]
-            if the_next_question is None:
-                if len(the_gates_seen) == _how_many_gates_there_are():
-                    break
-                _wait_until_the_run_is_asking_anything(the_board, the_work_item_id)
-                the_next_question = the_board.get(f"/api/runs/{the_work_item_id}").json()[
-                    "the_question"
-                ]
-            the_gates_seen.add(str(the_next_question["artifact_id"]))
+        already_answered: set[str] = set()
+        for _gate in range(1, _how_many_gates_there_are() + 1):
+            this_gate = _wait_until_the_gate_is_asking(
+                the_board, the_work_item_id, already_answered
+            )
+            already_answered.add(this_gate["artifact_id"])
+            the_gates_seen.add(str(this_gate["artifact_id"]))
             the_board.post(
                 f"/api/runs/{the_work_item_id}/decisions",
                 json={
@@ -826,10 +833,23 @@ def test_a_refusal_inside_a_whole_run_reaches_the_supervisor_and_the_run_finishe
                 },
             )
         _wait_until_the_run_has_finished(the_board, the_work_item_id)
+
+        the_stage_the_register_holds = the_work_item_registered_at(
+            the_register, the_work_item_id
+        ).stage
+
         assert len(the_gates_seen) == _how_many_gates_there_are(), (
             f"this run answered {sorted(the_gates_seen)} and the router has "
             f"{_how_many_gates_there_are()} artifacts, so a run stopped asking before it had been "
             "shown the whole pipeline — which is a run that ended early, not a test that finished"
+        )
+        # **The register, and not the card — for the reason the delivered test gives.**
+        # `how_it_ended` is `None` on a run that delivered, which is the opposite of what its
+        # name suggests and cost this test an assertion before it read the field.
+        assert the_stage_the_register_holds is Stage.DONE, (
+            "every gate was approved, the run stopped asking, and the register does not have it "
+            f"at DONE but at {the_stage_the_register_holds.name} — so this run delivered and never "
+            "marked itself delivered, which is the failure this store exists to prevent"
         )
 
     # **`how_it_ended` is `None` on a run that delivered**, which is the opposite of what the
@@ -856,47 +876,4 @@ def test_a_refusal_inside_a_whole_run_reaches_the_supervisor_and_the_run_finishe
     assert "health.py" in what_the_supervisor_was_told[0], (
         "the supervisor was told a run stopped but not which file was left alone, so it is being "
         "asked to judge without the one fact the refusal exists to carry"
-    )
-
-
-_how_many_questions_this_run_is_asked = 32
-"""Enough answers for eight gates asked twice each, and the reason they are asked twice matters.
-
-**Half of this number is a race and half is the finding, and the test cannot tell them apart.**
-The graph clears a question when it records the answer, which happens after the POST has already
-returned, so a poll can hand back the question the run was just given permission to stop asking —
-every gate is read twice, in order, with nothing at all wrong. `_wait_until_the_gate_is_asking`
-exists to close exactly that, by asking for a question *nobody has answered yet*.
-
-**This run cannot use it, because one gate really is asked twice.** The repair re-presents the
-verification: a person approved it *for a change*, the run then found out the change did not
-happen, and asking again is the only honest thing left to do — delivering on that approval would
-be delivering something nobody saw. So the second asking is real and must be answered, and a
-helper that only returns genuinely-new gates would wait forever on it. The consequence is that
-this loop cannot distinguish the race from the repeat, and answers both. Answering a gate twice
-is harmless — the record takes the first and the run proceeds — so the looseness costs a tidiness
-nobody needs, where the alternative costs a test that cannot finish.
-
-Thirty-two is the eight gates twice over plus room to spare, so a run that has genuinely gone
-wrong fails on its own assertion rather than on this bound. The loop also stops as soon as the
-run has recorded how it ended, because a bound is a backstop and not a way of saying how a run
-finished.
-"""
-
-
-def _wait_until_the_run_is_asking_anything(
-    the_board: TestClient, work_item_id: str
-) -> dict[str, object]:
-    """Wait for the board to be asking about anything at all.
-
-    **Not the "nobody has answered it yet" wait the other tests use, because here a gate can
-    legitimately be asked twice.** That helper closes a real race — a poll for "is it asking" can
-    return the question the run was just given permission to stop asking — and this one is paired
-    with a count of the questions this run asks, so the gap between two gates is a question still
-    to come rather than a run that has finished. Deciding *when to stop* is the count's job, and
-    it is the pre-existing `_wait_until_the_run_has_finished` that says the run is over.
-    """
-    return _wait_until(
-        lambda: the_board.get(f"/api/runs/{work_item_id}").json()["the_question"],
-        f"{work_item_id} was not asking anything",
     )
