@@ -117,7 +117,6 @@ def open_a_pull_request(
         json={
             "title": wanted.title,
             "body": wanted.body,
-            "labels": the_labels,
             "head": f"{wanted.head.owner}:{wanted.head.name}",
             "base": wanted.base,
         },
@@ -131,6 +130,19 @@ def open_a_pull_request(
         )
 
     opened = answer.json()
+
+    # **The label goes on afterwards, because GitHub's create-pull-request endpoint ignores a
+    # `labels` field.** It does not error and it does not warn: it answers 201 and opens the pull
+    # request with no labels on it. A pull request *is* an issue in GitHub's data model, which is
+    # why labels work on one and not the other — and why eleven assertions about the request all
+    # passed while every pull request this system opened went out untagged. They were about the
+    # request rather than about the pull request.
+    if the_labels:
+        _the_labels_go_on_afterwards(
+            client, credential, wanted.repository, int(opened["number"]), the_labels
+        )
+
+
 
     return AnOpenedPullRequest(
         number=opened["number"],
@@ -153,3 +165,84 @@ def what_github_said(answer: httpx.Response) -> str:
     every_reason = "; ".join(reason for reason in [said, *details] if reason)
 
     return every_reason or "GitHub said nothing about why."
+
+
+def _the_labels_go_on_afterwards(
+    client: httpx.Client,
+    credential: str,
+    repository: Repository,
+    number: int,
+    labels: list[str],
+) -> None:
+    """Put the project's name on a pull request that already exists, through the issues endpoint.
+
+    **This is the only way GitHub offers.** There is no version of the create call that carries a
+    label, and a pull request's labels live at `POST /repos/{owner}/{name}/issues/{number}/labels`
+    because of the issue underneath it.
+
+    **And a refusal here is not fatal, which matters more on this path than on the issue path.**
+    This call happens *after* the pull request exists and its branch is on a remote, so raising
+    would tell the caller a delivery failed when it succeeded — the same lie as delivering nothing,
+    pointed the other way. The first version raised, and its own test said it should not. So the
+    pull request stays open and untagged: untagged beats undelivered, on both paths, for the same
+    reason.
+    """
+    answer = client.post(
+        f"/repos/{repository.owner}/{repository.name}/issues/{number}/labels",
+        json={"labels": labels},
+        headers={
+            "Authorization": f"Bearer {credential}",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+
+    if answer.status_code in {GITHUB_OKAY, GITHUB_CREATED_IT}:
+        return
+
+    # **Nothing is raised, and the reason is that the work is already delivered.** Returning
+    # quietly is not ideal — a deployment that cannot write labels would find out by noticing the
+    # tag is missing — but the alternative is reporting a failure for a pull request that exists.
+    a_failed_label_put_where_it_would_be_seen(
+        client, credential, repository, number, labels, answer
+    )
+
+
+def a_failed_label_put_where_it_would_be_seen(
+    client: httpx.Client,
+    credential: str,
+    repository: Repository,
+    number: int,
+    labels: list[str],
+    what_github_said: httpx.Response,
+) -> None:
+    """Say on the pull request itself that its label never arrived, since nothing else will.
+
+    **A comment, and not an exception, because an exception here is a lie.** The pull request is
+    open and the branch is pushed by the time this is called, so a caller told the delivery failed
+    would go and look for a delivery that is sitting there. A person looking at the pull request
+    is exactly who would act on the missing tag, and this is the one place they will look.
+
+    **And if even that is refused, the run carries on untagged**, because a missing label is a
+    smaller loss than a delivery nobody believes happened.
+    """
+    answer = client.post(
+        f"/repos/{repository.owner}/{repository.name}/issues/{number}/comments",
+        json={
+            "body": (
+                f"This pull request could not be labelled `{', '.join(labels)}`, so it carries no "
+                f"project tag. The work is delivered and this note is the only record that the tag "
+                f"did not arrive. GitHub said: {what_github_said.text}"
+            )
+        },
+        headers={
+            "Authorization": f"Bearer {credential}",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    if answer.status_code not in {GITHUB_OKAY, GITHUB_CREATED_IT}:
+        print(
+            f"{labels} could not be put on pull request {number} of "
+            f"{repository.owner}/{repository.name}, and saying so on the pull request was refused "
+            f"too: {answer.text}",
+            flush=True,
+        )

@@ -74,9 +74,14 @@ def _a_client_recording_what_it_was_asked_to_do(
         # call cannot express it. The first version of the test below filed the issue through a
         # second, permissive client, which made the assertion pass for a reason that had nothing to
         # do with the rule.
-        for a_path, its_answer in (answers_by_path or {}).items():
+        # **Longest path first, and that ordering is load-bearing.** `/labels` is a suffix of
+        # `/issues/4/labels`, so a double matching in the order the paths were written answers the
+        # labelling call with whatever was meant for creating a label — and the first version of
+        # the test below did, so every pull request in it was labelled with a 422 and the
+        # assertion about labelling failed for a reason that had nothing to do with labelling.
+        for a_path in sorted(answers_by_path or {}, key=len, reverse=True):
             if str(request.url).endswith(a_path):
-                return its_answer
+                return answers_by_path[a_path]
         return the_answer
 
     # **With the base URL the production client has**, because both tools address GitHub with
@@ -237,13 +242,18 @@ def test_a_pull_request_is_opened_carrying_the_tag() -> None:
     the_pull_request = open_a_pull_request(wanted, the_client, "a-credential")
 
     assert the_pull_request.number == 7
-    the_opening = what_it_was_asked[-1]["json"]
-    assert isinstance(the_opening, dict)
-    assert what_it_was_asked[-1]["url"].endswith("/pulls"), (
-        "the last thing GitHub was asked was not the pull request"
+    # **The opening is found rather than taken as the last call**, because labelling now happens
+    # after it. Reading `[-1]` here would assert the wrong thing about the wrong call — and the
+    # first version of this test did exactly that, which is how it went on passing while every
+    # pull request went out untagged.
+    the_openings = [
+        what for what in what_it_was_asked if what["url"].endswith("/pulls")
+    ]
+    assert len(the_openings) == 1, (
+        f"expected one pull request to be opened, saw {what_it_was_asked}"
     )
-    assert the_opening["labels"] == ["paligakrzychu/wellbeing-tracker-public"], (
-        "the pull request was opened without the project tag, so a reviewer looking at a fork's "
+    assert any(what["url"].endswith("/labels") for what in what_it_was_asked), (
+        "the project tag was never put on the pull request, so a reviewer looking at a fork's "
         "list of open work cannot tell which project any of it is for"
     )
 
@@ -370,9 +380,16 @@ def test_a_deployment_that_cannot_create_labels_still_delivers() -> None:
     )
     the_opening = what_it_was_asked[-1]["json"]
     assert isinstance(the_opening, dict)
-    assert the_opening["labels"] == [], (
-        "the pull request went out carrying a label this deployment cannot create, so GitHub "
-        "refuses it and the work this run did is not delivered at all"
+    assert "labels" not in the_opening, (
+        "the pull request's opening carried a `labels` field, which GitHub's create endpoint "
+        "discards without complaint — so the deployment gets an untagged pull request and a test "
+        "that says otherwise"
+    )
+    assert not any(
+        what["url"].endswith("/issues/12/labels") for what in what_it_was_asked
+    ), (
+        "the code tried to label a pull request on a deployment that was already refused "
+        "permission to create labels, which is one more call to GitHub for a known answer"
     )
 
 
@@ -387,4 +404,111 @@ def test_a_deployment_that_can_create_labels_gets_them() -> None:
     assert the_tag_is_usable is True, (
         "a deployment that could have had the tag is being denied it, so the rule has stopped "
         "tagging things rather than tagging what it can"
+    )
+
+
+def test_a_pull_request_is_labelled_after_it_is_opened_because_github_ignores_the_field() -> None:
+    """**The half of the rule that was wrong for a week, and that eleven payload tests could not
+    see.**
+
+    GitHub's *create a pull request* endpoint does not take `labels`. It does for an issue — and a
+    pull request is an issue in GitHub's data model, which is why the two look alike until the
+    moment one of them is created. Sending the field is not an error: GitHub answers 201, opens the
+    pull request, and drops the labels on the floor without saying anything.
+
+    So the pull request arrived with no label, and every assertion in the other file passed, because
+    every one of them was about the request rather than about the pull request. **This is the whole
+    argument for proving a thing against the thing it talks to**, written down next to the code
+    that was wrong.
+
+    **Labelling after the opening, through the issues endpoint** — `POST
+    /repos/{owner}/{name}/issues/{number}/labels` — which is where GitHub keeps a pull request's
+    labels at all. There is no way to do it in one request, and the alternative was to keep sending
+    a field that is silently discarded.
+    """
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do(
+        answers_by_path={
+            "/labels": httpx.Response(422, json={"message": "Validation Failed"}),
+            "/pulls": httpx.Response(
+                201,
+                json={
+                    "number": 4,
+                    "html_url": "https://github.com/steamnoid/ai-sdlc-bestof-fast/pull/4",
+                },
+            ),
+            "/issues/4/labels": httpx.Response(
+                200, json=[{"name": "steamnoid/ai-sdlc-bestof-fast"}]
+            ),
+        }
+    )
+
+    open_a_pull_request(
+        a_pull_request_to_open(
+            repository=A_REPOSITORY,
+            head=BranchOnRemote(owner="steamnoid", name="a-branch"),
+            base="main",
+            title="A title",
+            body="A body.",
+        ),
+        the_client,
+        "a-credential",
+    )
+
+    assert any(
+        what["url"].endswith("/issues/4/labels") for what in what_it_was_asked
+    ), (
+        "nothing labelled the pull request after it was opened, so it carries no project tag. "
+        "Sending `labels` to the create endpoint looks like it works: GitHub answers 201 and "
+        "discards the field, and every test that only inspects the request agrees that it did"
+    )
+
+
+def test_a_pull_request_on_a_repository_that_cannot_be_labelled_still_opens() -> None:
+    """The permission rule again, on the second call this time.
+
+    The label is applied after the pull request exists, so a deployment that cannot write labels
+    now has a pull request to refuse — which is a worse outcome than the issue case, where the
+    refusal happened before anything was opened. So a refusal to label is reported and the pull
+    request is left alone.
+    """
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do(
+        answers_by_path={
+            "/labels": httpx.Response(422, json={"message": "Validation Failed"}),
+            "/pulls": httpx.Response(
+                201,
+                json={
+                    "number": 5,
+                    "html_url": "https://github.com/steamnoid/ai-sdlc-bestof-fast/pull/5",
+                },
+            ),
+            "/issues/5/labels": httpx.Response(
+                403, json={"message": "Resource not accessible by integration"}
+            ),
+            "/issues/5/comments": httpx.Response(201, json={"id": 1}),
+        }
+    )
+
+    the_pull_request = open_a_pull_request(
+        a_pull_request_to_open(
+            repository=A_REPOSITORY,
+            head=BranchOnRemote(owner="steamnoid", name="a-branch"),
+            base="main",
+            title="A title",
+            body="A body.",
+        ),
+        the_client,
+        "a-credential",
+    )
+
+    assert the_pull_request.number == 5, (
+        "the pull request was not opened, so a deployment that cannot write labels cannot deliver "
+        "at all — which is worse here than on the issue path, because this call happens after the "
+        "work is already on a remote"
+    )
+    assert any(
+        what["url"].endswith("/issues/5/comments") for what in what_it_was_asked
+    ), (
+        "the label never arrived and the pull request says nothing about it, so the only way to "
+        "find out is to notice the tag is missing — and the person who would act on that is the "
+        "one reading the pull request"
     )
