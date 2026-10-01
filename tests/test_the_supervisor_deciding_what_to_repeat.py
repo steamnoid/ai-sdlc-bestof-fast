@@ -51,6 +51,7 @@ from aisdlc.domain.work_item import WorkItem, a_work_item_commissioned_for_an_ag
 from aisdlc.graph import apply_node
 from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
 from aisdlc.graph.supervise_a_repair import (
+    ARepairCannotHandTheWorkItemToAnotherAgentError,
     TheRepeatBudgetRanOutError,
     TheSupervisorJudgedThisIsNotRepairingError,
     supervise_a_repair,
@@ -1044,3 +1045,46 @@ def _a_work_item_held_by(agent: str) -> WorkItem:
     return the_work_item.model_copy(
         update={"stage": Stage.IN_PROGRESS_BY_AGENT, "agent": agent},
     )
+
+
+def test_a_repair_that_hands_the_work_item_to_another_agent_stops_the_run(
+    tmp_path: Path, an_open_register: Path, monkeypatch
+) -> None:
+    """The crash run six hit, refused here instead of twenty minutes later.
+
+    **Every routing test in this file used a work item nobody was holding**, because that is
+    what `a_work_item_commissioned_for_an_agent` returns. So "rewrite the plan" was only ever
+    exercised with an empty hand, and a route into the planner's pickup passed — while in a real
+    run the implementer is holding the item, and `transition` refuses the handover outright:
+
+        StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to
+        aisdlc-dev-plan; a work item is released to a human, not to another agent
+
+    **A repair may only repeat the agent that already holds the work.** There is no release from
+    one agent to a peer in the transition table, and `AWAITING_AGENT_PICKUP` is not a release
+    either, because the biconditional invariant says a work item waiting for a pickup is held by
+    an agent. The only release the table allows is `AWAITING_HUMAN_APPROVAL` with no agent at
+    all, which is a decision for a person rather than a routing a supervisor may take.
+
+    So the supervisor stops, and says why in a sentence naming both agents — because a run that
+    stops without saying which handoff was refused reads as a supervisor that ran out of ideas.
+    """
+    monkeypatch.setenv("AISDLC_REPEAT_BUDGET", "0")
+    the_model = _AModelThatAnswers(
+        _a_decision(
+            WhereTheRunShouldStartAgain.THE_CHANGE_IS_PLANNED_AGAIN,
+            _a_verdict(THE_PLANNER),
+            _a_verdict(THE_IMPLEMENTER, must_repeat=False, why="the implementer was right"),
+        )
+    )
+
+    with pytest.raises(ARepairCannotHandTheWorkItemToAnotherAgentError) as what_happened:
+        supervise_a_repair(
+            _a_work_item_held_by(THE_IMPLEMENTER),
+            tmp_path,
+            "the change was made and the suite still fails",
+            the_model,  # type: ignore[arg-type]
+        )
+
+    assert str(THE_IMPLEMENTER) in str(what_happened.value)
+    assert str(THE_PLANNER) in str(what_happened.value)
