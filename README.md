@@ -333,10 +333,21 @@ with nothing on them saying which project asked, the only way to tell a briefing
 person's is to read every body and recognise the formatting — which stops working silently the
 moment the formatting changes.
 
-**The tag is the full name, `owner/name`, and not the name on its own.** A repository name is only
-unique within an owner: two forks of one project share a name, and a bare name filed by both would
-put their work under one label and make the filter lie. `Repository.address` supplies it, which is
-already the one place that joins the halves.
+**The tag is *this system's* project — not the repository it files into.** This is the whole rule
+and it took six attempts to get right, so it is written plainly. **A tag answers *who produced
+this*, and that is a fact about the codebase, not about where the work landed.** The first version
+derived it from the repository being filed into, so a briefing on somebody's project opened issues
+there tagged with *that project's* name — which looks like a tag about their work, answers nothing
+about which tool wrote the issue, and would make two automations filing into one repository
+indistinguishable to a person reading the queue.
+
+**So the function takes no repository at all.** Taking one is what invited the mistake: the
+argument was there, it was the only name in scope, and it was the wrong name. An argument nobody
+needs is an argument that will be used wrongly. The name is a constant, and `AISDLC_PROJECT_NAME`
+overrides it for a deployment that forks this.
+
+**It is the full name, `owner/name`, not the bare name** — a repository name is only unique within
+an owner, and two forks of one project share a name.
 
 **One rule, one module, read by both writes.** `github.open_an_issue` and
 `github.create_pull_request` are the only two things here that write to a repository somebody else
@@ -393,6 +404,26 @@ them, which is a cost to know about rather than a reason not to file.
 
 Set `AISDLC_PROJECT_NAME` when a project spans repositories or a monorepo's repository name is the
 container rather than the thing being worked on.
+
+## main is protected, and it was not for the first hour
+
+**`main` accepted a direct push for the first hour of this repository existing**, and I proved it
+by pushing a stray line straight to it while testing something else. The line is gone. What
+matters is the three things that took to fix, and each was found by testing the rule rather than by
+trusting the response:
+
+| what was wrong | how it showed up |
+|---|---|
+| `enforce_admins: false` | the protection was on and the push went through anyway — **the owner is the one person it does not stop** |
+| `required_approving_review_count` defaulted to 1 | every pull request sat `BLOCKED` forever, because nobody can approve their own |
+| the required context was `gate` | the workflow's name, while GitHub's status context is the **job's** name, `the_gate` — so the requirement could never be met and every merge was blocked |
+
+**What is required now:** a pull request, the `the_gate` check green, up to date with `main`, stale
+approvals dismissed, no force pushes, no deletions, **and it applies to administrators** — verified
+by pushing again and reading `GH006: Protected branch update failed`.
+
+Not required: a second human. One approval was the default and it makes a one-person repository
+unmergeable, which is not a safety property.
 
 ## What is not built
 
