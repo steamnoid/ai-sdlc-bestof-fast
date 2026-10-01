@@ -71,7 +71,12 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 51 tests, 6s, no network, no model, no credential, no container
+uv run pytest -q     # 53 passed, 1 skipped, 5s, no network, no model, no credential, no container
+
+# The one test that asks a model runs when a deployment has stated LLM_PROVIDER / LLM_ENDPOINT /
+# LLM_MODEL, and skips with the reason printed when it has not. To watch it judge:
+set -a && . ./.env && set +a && uv run pytest -q -s \
+  tests/test_a_real_model_judging_a_real_refusal.py
 
 # The e2e tier is not separated here: `uv run pytest` is the whole suite, and a live-model run is
 # driven through the same board by starting the server with a `.env` in place.
@@ -435,7 +440,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships six test files, and each one is a claim
+  end-to-end tests were not copied. This repository ships seven test files, and each one is a claim
   rather than a category:
 
   | file | what it holds this repository to |
@@ -446,6 +451,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself` | a repository briefs itself and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes` | every issue and pull request carries the project's full name |
   | `test_whether_anything_observed_the_change` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_real_model_judging_a_real_refusal` | a real model's judgement inside a real graph; skips loudly without a credential |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Three of these six did not exist a week ago**, and two of them exist because a
