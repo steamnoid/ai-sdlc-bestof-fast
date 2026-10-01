@@ -33,6 +33,10 @@ from aisdlc.creative.filing_what_the_briefing_found import AnIssueThatWasOpened
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_client import THE_SETTING_NAMING_THE_CREDENTIAL
 from aisdlc.tools.github_create_pull_request import what_github_said
+from aisdlc.tools.the_tag_this_system_leaves_on_what_it_writes import (
+    make_sure_the_tag_is_there,
+    the_tag_this_system_leaves,
+)
 
 GITHUB_CREATED_IT = 201
 
@@ -88,11 +92,14 @@ def open_an_issue(
             "cannot see anything."
         )
 
+    the_tag = the_tag_this_system_leaves(wanted.repository)
+    make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
+
     answer = client.post(
         WHERE_AN_ISSUE_IS_OPENED.format(
             owner=wanted.repository.owner, name=wanted.repository.name
         ),
-        json={"title": wanted.title, "body": wanted.body},
+        json={"title": wanted.title, "body": wanted.body, "labels": [the_tag]},
         headers={
             "Authorization": f"Bearer {credential}",
             "Accept": "application/vnd.github+json",

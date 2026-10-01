@@ -7,6 +7,10 @@ from pydantic import BaseModel, field_validator
 
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.credential_error import NoCredentialError
+from aisdlc.tools.the_tag_this_system_leaves_on_what_it_writes import (
+    make_sure_the_tag_is_there,
+    the_tag_this_system_leaves,
+)
 
 WHERE_A_PULL_REQUEST_IS_OPENED = "/repos/{owner}/{name}/pulls"
 THE_SETTING_NAMING_THE_CREDENTIAL = "GITHUB_TOKEN"
@@ -99,6 +103,9 @@ def open_a_pull_request(
             "nobody cannot ask for one."
         )
 
+    the_tag = the_tag_this_system_leaves(wanted.repository)
+    make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
+
     answer = client.post(
         WHERE_A_PULL_REQUEST_IS_OPENED.format(
             owner=wanted.repository.owner, name=wanted.repository.name
@@ -106,6 +113,7 @@ def open_a_pull_request(
         json={
             "title": wanted.title,
             "body": wanted.body,
+            "labels": [the_tag],
             "head": f"{wanted.head.owner}:{wanted.head.name}",
             "base": wanted.base,
         },

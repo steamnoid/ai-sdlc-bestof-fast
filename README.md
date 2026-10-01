@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 42 tests, 5s, no network, no model, no credential, no container
+uv run pytest -q     # 50 tests, 6s, no network, no model, no credential, no container
 
 # The e2e tier is not separated here: `uv run pytest` is the whole suite, and a live-model run is
 # driven through the same board by starting the server with a `.env` in place.

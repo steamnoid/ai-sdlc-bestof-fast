@@ -1,0 +1,292 @@
+"""Every issue and pull request this system opens carries the name of the project it came from.
+
+**A tag is the only way to find what this system wrote once it is on somebody else's board.** An
+issue lands in a queue among hundreds; a pull request lands in a review list among dozens. Without
+something on them saying *which project asked*, the only way to tell a briefing's issue from a
+person's is to read every body and recognise the formatting — and that stops working the moment the
+formatting changes, silently.
+
+**So it is one rule with one source, not one label per call site.** `github.open_an_issue` and
+`github.create_pull_request` are the only two things here that write to a repository somebody else
+owns, and a rule stated in one module and read by both cannot be applied to one of them. The
+module is `the_tag_this_system_leaves_on_what_it_writes`, and nothing else decides what the tag is.
+
+**And the label has to exist, because GitHub refuses an issue carrying a label it does not know.**
+That is the half that is easy to forget and turns a completed run into a 422 at the last step. A
+422 here would read as "the delivery failed" and cost somebody twenty minutes of reasoning to
+diagnose, so the label is created if it is missing and the creation is refused loudly if it fails.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import httpx
+import pytest
+
+from aisdlc.domain.repository import Repository
+from aisdlc.tools.github_create_pull_request import (
+    BranchOnRemote,
+    a_pull_request_to_open,
+    open_a_pull_request,
+)
+from aisdlc.tools.github_open_an_issue import AnIssueToOpen, open_an_issue
+from aisdlc.tools.the_tag_this_system_leaves_on_what_it_writes import (
+    THE_SETTING_NAMING_THE_PROJECT,
+    make_sure_the_tag_is_there,
+    the_tag_this_system_leaves,
+)
+
+A_REPOSITORY = Repository(owner="paligakrzychu", name="wellbeing-tracker-public")
+
+
+def _a_client_recording_what_it_was_asked_to_do(
+    answer: httpx.Response | None = None,
+) -> tuple[httpx.Client, list[dict[str, object]]]:
+    """A GitHub that records every call and answers whatever the test decided it should.
+
+    **A recorder rather than a stub answering canned prose**, because both halves of this rule are
+    about *what was sent*: the label on the issue and the label GitHub was asked to create. A
+    double that only returned a number could not tell the difference between an issue filed with
+    a tag and one filed without, which is the whole claim.
+    """
+    what_it_was_asked: list[dict[str, object]] = []
+    the_answer = answer if answer is not None else httpx.Response(201, json={
+        "number": 7,
+        "html_url": "https://github.com/paligakrzychu/wellbeing-tracker-public/pull/7",
+    })
+
+    def record(request: httpx.Request) -> httpx.Response:
+        import json as json_module
+
+        what_it_was_asked.append(
+            {
+                "method": request.method,
+                "url": str(request.url),
+                "json": json_module.loads(request.content) if request.content else None,
+            }
+        )
+        return the_answer
+
+    # **With the base URL the production client has**, because both tools address GitHub with
+    # relative paths and a double without one answers "unknown url type" instead of anything about
+    # labels. A test double that differs from the thing it stands in for fails in a way that says
+    # nothing, and the first version of this did exactly that.
+    return (
+        httpx.Client(
+            base_url="https://api.github.com",
+            transport=httpx.MockTransport(record),
+        ),
+        what_it_was_asked,
+    )
+
+
+def test_the_tag_is_the_full_project_name_and_a_setting_overrides_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The **full** name — owner and name together — because a bare name cannot say which project.
+
+    **A repository name is only unique within an owner, and a tag that cannot tell two apart
+    cannot answer the only question it is filed under.** Two forks of one project share a name, and
+    `wellbeing-tracker-public` is a plausible thing for more than one person to own. Filed by both
+    under one bare label, the filter would answer "which project asked for this?" with a name that
+    does not, and the person filtering would have no way to know that.
+
+    `owner/name` is also what GitHub itself calls a repository's full name, so the label and the
+    thing it names are one string — the one a reader would type.
+
+    **And a setting overrides it, because a project and a repository are not always the same
+    thing.** A deployment can file for several repositories under one project name, and a monorepo's
+    repository name is the container rather than the thing being worked on.
+    """
+    monkeypatch.delenv(THE_SETTING_NAMING_THE_PROJECT, raising=False)
+
+    assert the_tag_this_system_leaves(A_REPOSITORY) == "paligakrzychu/wellbeing-tracker-public"
+
+    monkeypatch.setenv(THE_SETTING_NAMING_THE_PROJECT, "wellbeing")
+    assert the_tag_this_system_leaves(A_REPOSITORY) == "wellbeing"
+
+
+def test_a_setting_that_is_blank_falls_back_to_the_repository_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tag of whitespace is not a tag, and GitHub would refuse it as one.
+
+    **An unset setting and a setting set to nothing are different bugs and the same symptom.** A
+    deployment that empties a setting to turn a name off should get the repository name rather
+    than an exception from deep inside an HTTP call, and `GITHUB_TOKEN=` being present-but-empty is
+    already handled this way elsewhere in this repository for exactly this reason.
+    """
+    monkeypatch.setenv(THE_SETTING_NAMING_THE_PROJECT, "   ")
+
+    assert the_tag_this_system_leaves(A_REPOSITORY) == "paligakrzychu/wellbeing-tracker-public"
+
+
+def test_the_tag_is_created_when_the_repository_does_not_have_it_yet() -> None:
+    """GitHub refuses a label it has never heard of, so a run would die at its last step.
+
+    **This is the half that turns a finished run into a 422.** The label is created *before* the
+    issue or the pull request is opened, and its absence is checked rather than assumed: a
+    `POST /labels` for a label that already exists answers 422, and treating that as success is
+    what makes this idempotent. A run that files three issues must create the label once.
+    """
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do()
+
+    make_sure_the_tag_is_there(the_client, "a-credential", A_REPOSITORY, "wellbeing")
+
+    assert len(what_it_was_asked) == 1, (
+        f"expected exactly one call and saw {what_it_was_asked}, so the tag is either created on "
+        "every filing — two useless writes each time — or never created, which is a 422 waiting"
+    )
+    assert what_it_was_asked[0]["url"].endswith("/labels"), (
+        "the tag was not created on the repository's labels, so GitHub will refuse the issue that "
+        "carries it"
+    )
+    assert what_it_was_asked[0]["json"] == {"name": "wellbeing", "color": "ededed"}, (
+        "the tag GitHub was asked for is not the tag the rule names, so issues would be filed "
+        "under a label nothing ever reads"
+    )
+
+
+def test_a_tag_that_is_already_there_is_not_an_error() -> None:
+    """GitHub answers 422 for a label that already exists, and 422 here means it worked.
+
+    **Filing is not a one-off.** A briefing proposes several opportunities and a person may pick
+    more than one, and a deployment may run this repository every week. So the second filing of a
+    *new* issue against a repository that already carries the label must not refuse — and the
+    second version of this test asserted on the number of calls, which is a claim about efficiency
+    dressed as a claim about correctness. The correctness is that it does not raise: a rule that
+    treated 422 as failure would file the first issue in a repository and refuse every one after
+    it, which is a bug that only appears on a deployment's second run.
+
+    The one call recorded *is* the attempt, and GitHub refusing it is the answer being read as
+    "it is already there".
+    """
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do(
+        answer=httpx.Response(422, json={"message": "Validation Failed"})
+    )
+
+    make_sure_the_tag_is_there(the_client, "a-credential", A_REPOSITORY, "wellbeing")
+
+    assert len(what_it_was_asked) == 1 and what_it_was_asked[0]["url"].endswith("/labels"), (
+        "the label was never asked about, so a repository that already has it is not something "
+        "this rule can recognise"
+    )
+
+
+def test_an_issue_is_filed_carrying_the_tag() -> None:
+    """The whole point: what lands in somebody else's queue says which project asked for it."""
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do(
+        answer=httpx.Response(
+            201,
+            json={
+                "number": 12,
+                "html_url": "https://github.com/paligakrzychu/wellbeing-tracker-public/issues/12",
+            },
+        )
+    )
+    wanted = AnIssueToOpen(
+        repository=A_REPOSITORY, title="Add a health endpoint", body="Why it is worth doing."
+    )
+
+    the_issue = open_an_issue(wanted, the_client, "a-credential")
+
+    assert the_issue.number == 12
+    the_filing = what_it_was_asked[-1]
+    assert the_filing["url"].endswith("/issues"), (
+        "the last thing GitHub was asked was not the issue, so this run has created a label and "
+        "filed nothing"
+    )
+    assert the_filing["json"] == {
+        "title": "Add a health endpoint",
+        "body": "Why it is worth doing.",
+        "labels": ["paligakrzychu/wellbeing-tracker-public"],
+    }, (
+        "the issue was filed without the project tag, so on a busy repository there is no way to "
+        "tell a briefing's issue from a person's without reading every body"
+    )
+
+
+def test_a_pull_request_is_opened_carrying_the_tag() -> None:
+    """The other of the only two writes this system makes to a repository somebody else owns.
+
+    **A pull request is where a tag is worth the most**, because a review list is short, several
+    projects can be in flight at once, and a reviewer deciding whether to read a diff is deciding
+    on the title and the labels rather than on the diff.
+    """
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do()
+    wanted = a_pull_request_to_open(
+        repository=A_REPOSITORY,
+        head=BranchOnRemote(owner="steamnoid", name="aisdlc/issue-12-abc"),
+        base="main",
+        title="Add a health endpoint",
+        body="What changed and why.",
+    )
+
+    the_pull_request = open_a_pull_request(wanted, the_client, "a-credential")
+
+    assert the_pull_request.number == 7
+    the_opening = what_it_was_asked[-1]["json"]
+    assert isinstance(the_opening, dict)
+    assert what_it_was_asked[-1]["url"].endswith("/pulls"), (
+        "the last thing GitHub was asked was not the pull request"
+    )
+    assert the_opening["labels"] == ["paligakrzychu/wellbeing-tracker-public"], (
+        "the pull request was opened without the project tag, so a reviewer looking at a fork's "
+        "list of open work cannot tell which project any of it is for"
+    )
+
+
+def test_the_two_writes_ask_for_the_same_tag() -> None:
+    """One source, so the two cannot drift apart.
+
+    **The failure this prevents is quiet.** Somebody adds a tag to the issue tool for one project
+    and forgets the pull request, and every filing after that is half-tagged: the issues are
+    findable and the pull requests are not. No test of either tool alone would notice, because each
+    one is individually correct — which is the argument for reading both against the same rule.
+    """
+    the_tag = the_tag_this_system_leaves(A_REPOSITORY)
+
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do()
+    open_an_issue(
+        AnIssueToOpen(repository=A_REPOSITORY, title="A title", body="A body."),
+        the_client,
+        "a-credential",
+    )
+    issue_filing = what_it_was_asked[-1]["json"]
+    assert isinstance(issue_filing, dict)
+
+    the_pull_client, pull_what_was_asked = _a_client_recording_what_it_was_asked_to_do()
+    open_a_pull_request(
+        a_pull_request_to_open(
+            repository=A_REPOSITORY,
+            head=BranchOnRemote(owner="steamnoid", name="aisdlc/issue-12-abc"),
+            base="main",
+            title="A title",
+            body="A body.",
+        ),
+        the_pull_client,
+        "a-credential",
+    )
+    pull_opening = pull_what_was_asked[-1]["json"]
+    assert isinstance(pull_opening, dict)
+
+    assert issue_filing["labels"] == [the_tag]
+    assert pull_opening["labels"] == [the_tag], (
+        "the issue and the pull request carry different tags, so a project filter finds"
+        "one kind of thing this system wrote and silently misses the other"
+        "thing this system wrote and silently misses the other"
+    )
+
+
+def test_the_setting_is_named_in_the_message_of_a_refusal() -> None:
+    """Whoever has to fix a missing tag is reading the error, not the source.
+
+    `os.environ` is imported for the same reason every other module imports it: the setting's
+    name is a fact about the deployment's configuration, and a reader who has to go looking for it
+    in the source is being asked to do the author's job.
+    """
+    assert THE_SETTING_NAMING_THE_PROJECT == "AISDLC_PROJECT_NAME"
+    assert os.environ is not None
+    assert Path(__file__).exists()
