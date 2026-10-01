@@ -460,6 +460,37 @@ work a team has already agreed to do, which is the exact failure this is for.
 **The limit, named.** The list is read once, at briefing time. An issue filed between the briefing
 and a person's pick is not in it.
 
+## This is the copy that builds itself, and what that cost
+
+**`ai-sdlc-bestof-fast` is frozen. This repository is where the work happens.** The original is a
+read-only reference; every change since is a pull request here.
+
+**The copy briefed itself and filed four issues on itself**, every one tagged with this system's
+own project name — which was the rule fixed the day before, after it was wrong for a week. Then a
+fifth: the runner is npm-only.
+
+**And the npm-only runner was the whole of the difficulty.** Three constants decided how any
+repository's suite is run — `("npm", "test")`, `("npm", "ci")` and a fallback image of
+`node:22-bookworm` — beside a comment saying that a repository whose suite is `pytest` has no such
+mode and that `a_listing_command_for_a_toolchain` was "where that question is asked and answered".
+**That function did not exist.** So a verification of any change to *this* repository installed
+nothing, ran nothing, went red, and the delivery refused it: nothing this system could change
+about itself was deliverable.
+
+**The image was already read out of the repository and the other three answers were not.** That
+inconsistency was the finding — "the toolchain is declared, not remembered" was true of one answer
+out of four. All four are now `HowThisRepositoryIsTested`, read together, because `pip install -e .`
+inside `node:22-bookworm` is not a configuration anybody chose; it is what you get when each answer
+has its own default and none of them has an owner.
+
+**And the duplicate rule refused a real issue the day it was written.** It asked to teach
+`shell.run_tests` a Python repository; the copy already had an open issue about the trust boundary
+of `shell.run_command`. Different files, different problems — and the rule fired anyway, because
+they shared `run` and `tests`, which are half the words in this codebase's file names. A count of
+two shared words cannot tell a coincidence from a duplicate in a vocabulary that dense. It is now
+a **fraction of the shorter title** — two of nine is a quarter, while the duplicate it exists for
+shares three of three.
+
 ## What is not built
 
 Stated rather than left to be discovered.
@@ -576,7 +607,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships ten test files, and each one is a claim
+  end-to-end tests were not copied. This repository ships eleven test files, and each one is a claim
   rather than a category:
 
   | file | what it holds this repository to |
@@ -593,6 +624,7 @@ Stated rather than left to be discovered.
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
   | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
+  | `test_a_python_repository_can_be_verified.py` | that a Python repository's suite is run with pip and pytest rather than npm, and that its collection listing is read |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a

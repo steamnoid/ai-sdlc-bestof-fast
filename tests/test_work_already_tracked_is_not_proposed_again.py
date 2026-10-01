@@ -33,6 +33,7 @@ import pytest
 
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_list_open_issues import (
+    AnOpenIssue,
     WorkAlreadyTrackedError,
     read_the_open_issues,
     the_issues_listed_as_tracked,
@@ -236,3 +237,53 @@ def test_filing_refuses_a_duplicate_before_anything_is_opened() -> None:
         "an issue was opened for work that is already tracked, and it has to be closed by a person "
         "on a board that is not ours"
     )
+
+
+def test_two_different_problems_in_one_codebase_are_not_the_same_work() -> None:
+    """**A false positive caught by filing for real, the same day the rule was written.**
+
+    This asked to teach `shell.run_tests` a Python repository; the repository already had an open
+    issue about the trust boundary of `shell.run_command`. Different files, different problems, and
+    the refusal fired anyway because they shared `run` and `tests` — **which are half the words in
+    this codebase's file names.** A count of two shared words cannot tell a coincidence from a
+    duplicate in a vocabulary that dense, and the rule refused work that was genuinely new.
+
+    **The fraction is what decides it now, because a coincidence cannot make up a majority.** Two
+    of nine meaningful words in the shorter title is a quarter; the real duplicate this exists for
+    shares three of three.
+    """
+    already_filed = [
+        AnOpenIssue(
+            number=4,
+            title=(
+                "Decide and write down the trust boundary of "
+                "src/aisdlc/tools/run_command.py: which "
+                "shell commands an agent may run, whether the working directory is confined to the "
+                "project directory, and what inspect_for_security_risk.py is meant to catch. Then "
+                "enforce it where the command is issued, and assert it in tests."
+            ),
+        )
+    ]
+
+    the_issues_listed_as_tracked(
+        "Teach shell.run_tests a Python repository: it is hardcoded to npm and cannot verify a "
+        "change to this codebase",
+        already_filed,
+    )
+
+
+def test_the_same_work_still_goes_on_being_refused_after_the_rule_changed() -> None:
+    """**A rule that got looser needs a test that it did not get looser than useless.**
+
+    The fraction is the change that stops the false positive, and the failure mode of a change like
+    it is that the original case quietly stops being caught. This is that case, unchanged, still
+    refused.
+    """
+    already_filed = [
+        AnOpenIssue(number=7, title="The session cookie has no expiry")
+    ]
+
+    with pytest.raises(WorkAlreadyTrackedError):
+        the_issues_listed_as_tracked(
+            "Add an expiry to the session cookie", already_filed
+        )
