@@ -568,6 +568,48 @@ That last one is worth being precise about, because it is the whole thesis in on
 that has already written the code is still not a delivery until the suite agrees**, and the suite
 here said no.
 
+**Run five** was refused at the requirements again, and this time for a claim that was simply
+false: it said the inspection had found neither `run_command.py` nor any test file, while asserting
+detailed facts about both. The first half was wrong. Checking it directly:
+
+```text
+src/aisdlc/tools/run_command.py: listed=True
+tests/test_a_python_repository_can_be_verified.py: listed=False
+```
+
+**The source file was there. Every test file was not, and the reason was that no test in this
+repository is named after a keyword.** The selection rule was *"does a word from a fixed list
+appear in this file's name"*, and a test is named after what it asserts — `a_python_repository_can_
+be_verified`, `a_card_never_names_a_framework_node_as_a_step`. Not one matched, so **the entire
+test suite of this repository had never been shown to any agent.** That is now fixed: a file under
+a test directory is selected by where it lives.
+
+**Run six**, with the tests visible, is the run that got furthest: **all five analysis gates
+approved** — discovery, requirements, QA plan, architecture, security — the first time the whole
+analysis chain has cleared in one run. The discovery report marked its own gaps honestly, naming
+`run_command.py` and the unseen test files as not shown rather than writing about them anyway.
+
+**And then the run crashed, rather than being refused:**
+
+```text
+StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to
+aisdlc-dev-plan; a work item is released to a human, not to another agent
+```
+
+The verification was refused, the supervisor was asked what to repeat, and it answered *rewrite
+the plan*. That answer routes to `offer_the_work_item_to_the_planner`
+(`src/aisdlc/graph/supervise_a_repair.py:124`), which is `WHERE_THE_PLAN_IS_REWRITTEN`.
+
+**The route is the bug.** That path was only ever exercised after a *planning* refusal, where the
+holder is already `aisdlc-dev-plan` and handing it to the same agent is a no-op that works. After
+an *implementation* refusal the holder is `aisdlc-dev-impl`, so the planner's pickup asks for a
+second agent — and the state machine refuses, correctly and for the right reason. Nothing is wrong
+with the state machine here. **What is missing is a release: the work item has to be let go before
+another agent may take it**, and only the plan-after-a-plan-refusal path never needed one.
+
+This is the first defect in this whole exercise that is neither a prompt nor a model. It is
+Layer A, it is deterministic, and it is the last thing standing between five approved gates and a
+delivery.
 **And the two failures are the run disagreeing with its own instructions, which is the most
 interesting thing in it.** The request stated, as a decision to be recorded before anything was
 written:
