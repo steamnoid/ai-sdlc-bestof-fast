@@ -44,12 +44,15 @@ from tests.the_neighbouring_agent_pairs import (
 
 pytestmark = pytest.mark.e2e
 
-# A path as these artifacts write them: a slash-separated run of name characters, ending in a
-# suffix or a known extensionless file name. Prose is the only place a path can come from, because
-# QaPlan and ArchitectureReport have no field linking a scenario to a module — which is a real gap
-# in the domain and not something a test may paper over.
+# A path as these artifacts write them: **at least one slash**, then a name with a known suffix.
+# The slash is required and that was learned the hard way — a first run reported two agents
+# "inventing" `Dockerfile` in a repository that has none, which was not two agents inventing
+# anything. It was an agent saying the tests run in a Dockerfile. Prose is the only place a path
+# can come from here, because QaPlan and ArchitectureReport have no field linking a scenario to a
+# module — a real gap in the domain that a test may not paper over — and a mention and a citation
+# are the same characters in a sentence.
 WHAT_LOOKS_LIKE_A_PATH = re.compile(
-    r"\b(?:[\w.-]+/)+[\w.-]+\.(?:py|md|toml|json|yaml|yml|ini|txt)\b|\bDockerfile\b|\bpyproject\.toml\b"
+    r"\b(?:[\w.-]+/)+[\w.-]+\.(?:py|md|toml|json|yaml|yml|ini|txt)\b"
 )
 
 A_REQUEST = a_request_about(
@@ -89,6 +92,28 @@ def _every_artifact_text(an_artifact: object) -> list[str]:
 
     walk(an_artifact)
     return the_texts
+
+
+def _is_named_in_the_clone(a_named_path: str, what_is_in_the_clone: set[str]) -> bool:
+    """Whether a path an agent wrote names a file of the clone, allowing for a lost leading dot.
+
+    **Suffix, not equality, and a first run learned why.** An agent wrote
+    `github/workflows/gate.yml` for a file this repository holds as `.github/workflows/gate.yml`,
+    and an equality check reported that as a path one of them invented. It is not invented, it is
+    written the way people write paths when they are typing rather than copying — and a check
+    strict enough to fail on a missing dot produces false failures, which is worse than no check
+    because it is believed.
+
+    **The comparison is a suffix on a path boundary, so `a/b.py` cannot match `xa/b.py`.**
+    """
+    for a_path_in_the_clone in what_is_in_the_clone:
+        if a_path_in_the_clone == a_named_path:
+            return True
+        if a_path_in_the_clone.endswith("/" + a_named_path):
+            return True
+        if a_path_in_the_clone.endswith("/" + a_named_path.lstrip("./")):
+            return True
+    return False
 
 
 def _what_is_in_the_clone(a_clone: ClonedRepository) -> set[str]:
@@ -168,7 +193,7 @@ def test_two_neighbouring_agents_do_not_contradict_each_other(
     everything_they_said = _every_artifact_text(the_first) + _every_artifact_text(the_second)
 
     for a_path in sorted(_every_path_named_in(everything_they_said)):
-        assert a_path in what_is_in_the_clone, (
+        assert _is_named_in_the_clone(a_path, what_is_in_the_clone), (
             f"{a_pair.first} and {a_pair.second} between them name {a_path!r}, which is not a "
             f"file of the clone. There are {len(what_is_in_the_clone)} files there, so this is a "
             "path one of them invented rather than one it read"
@@ -224,6 +249,14 @@ def _what_must_hold_between_them(
     what_is_in_the_clone: set[str],
 ) -> None:
     """The claim that pair declares, checked against the two artifacts it produced."""
+    if a_pair.first == "discover":
+        # **This pair's claim is the grounding check above, and saying so is the whole answer.**
+        # Nothing crosses between these two agents: the product analyst is handed the clone and
+        # the request, not the DiscoveryReport. So there is nothing to compare and the thing worth
+        # asserting is the one the pair is named for — that neither of them spoke about a file
+        # neither was shown — which the caller has already done for both artifacts at once.
+        return
+
     if a_pair.first == "propose_requirements":
         the_criteria = list(getattr(the_first, "acceptance_criteria", []) or [])
         the_scenarios = " ".join(_every_artifact_text(the_second))

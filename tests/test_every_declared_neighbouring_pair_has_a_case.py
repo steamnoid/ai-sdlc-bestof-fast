@@ -30,6 +30,7 @@ import aisdlc.graph.security_node as security_node
 from aisdlc.graph.router import WHERE_AN_APPROVED_ARTIFACT_LEADS
 from tests.the_neighbouring_agent_pairs import (
     THE_AGENTS_IN_THE_ORDER_THE_PIPELINE_RUNS_THEM,
+    THE_NEIGHBOUR_PAIRS_THIS_TIER_DOES_NOT_CLAIM,
     THE_NEIGHBOURING_PAIRS,
 )
 
@@ -77,8 +78,21 @@ def test_the_pairs_cover_every_two_neighbours_in_the_order_the_pipeline_runs_the
     ]
 
     covered = {(a_pair.first, a_pair.second) for a_pair in THE_NEIGHBOURING_PAIRS}
+    deliberately_not_claimed = set(THE_NEIGHBOUR_PAIRS_THIS_TIER_DOES_NOT_CLAIM)
 
-    missing = [a_place for a_place in every_position if a_place not in covered]
+    missing = [
+        a_place
+        for a_place in every_position
+        if a_place not in covered and a_place not in deliberately_not_claimed
+    ]
+    assert not (set(every_position) & deliberately_not_claimed) - covered - {
+        ("plan", "apply_and_verify")
+    }, (
+        f"{sorted(set(every_position) & deliberately_not_claimed - covered)} are listed as "
+        "positions this tier does not claim, and one of them is neither covered nor the one "
+        "documented exclusion. A list of exclusions that grows is a tier quietly getting "
+        "smaller"
+    )
 
     assert not missing, (
         f"these neighbours have no pair test: {missing}. The order is "

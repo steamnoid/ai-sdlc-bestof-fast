@@ -105,14 +105,17 @@ THE_NEIGHBOURING_PAIRS = (
             "is insecure is a plan nobody was told not to write"
         ),
     ),
-    ANeighbouringPair(
-        first="plan",
-        second="apply_and_verify",
-        what_crosses=(
-            "the ImplementationPlan: every path in files_to_change, files_to_add and "
-            "tests_to_add has to be a file of the clone the implementer was shown, because a "
-            "plan naming a path the repository does not have is applied to a checkout that "
-            "cannot receive it"
-        ),
-    ),
 )
+
+
+# **One neighbour is deliberately not claimed, and saying so is the point.**
+# `plan` -> `apply_and_verify` is two agents in the pipeline and it is not a pair this tier
+# proves. `ApplyAndVerify(clone, repository, plan) -> ADeliveredChange` does not reason and
+# report: it writes files into the clone and then runs the repository's own test suite in a
+# container. Its output is a changed repository and a suite result, so "do these two agree" has
+# no meaning — there is nothing to contradict. Proving that pair means proving a whole change
+# works, which is what the container tier and a real run are for.
+#
+# **This list exists so the exclusion is a decision rather than a gap.** The coverage guard reads
+# it, and fails if anything else is added to it without a case.
+THE_NEIGHBOUR_PAIRS_THIS_TIER_DOES_NOT_CLAIM = (("plan", "apply_and_verify"),)
