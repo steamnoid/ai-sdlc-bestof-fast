@@ -506,6 +506,41 @@ by what the repository declares.
 **The suite now runs here, in a container, green:** `76 passed, 3 skipped` on
 `ghcr.io/astral-sh/uv:python3.13-bookworm`, one mount, `--network=none`, no credential.
 
+**And then a run pointed at its own issue #4, and the policy refused it — correctly, and for the
+reason this repository already knows about.** Two gates in. The discovery report was approved with a
+reason that checked every claim against its own evidence list. The requirements gate refused, and
+the reason is worth quoting because it is the *inspection* bug from two nights ago wearing a
+different hat:
+
+> The artifact itself records that neither `src/aisdlc/tools/run_command.py` nor
+> `src/aisdlc/agents/inspect_for_security_risk.py` had its contents in the inspection, yet
+> requirements 3, 4, 6 and 7 state what those files catch, where the boundary is enforced, and
+> that nothing escapes the project directory — and criteria 2, 3 and 5 ask for tests whose
+> outcomes turn on a "permitted list" and a "project directory" that the same document lists as
+> undetermined.
+
+**So the same file contents were missing from a second stage's inspection.** It was fixed for
+discovery; the analysis stages were not checked. **A model wrote requirements about two files
+nobody had read**, and a policy caught it by comparing what the artifact said it had seen against
+what it then asserted. That is the loop working: the refusal is the system defending itself.
+
+**The second run states the four answers the refusal asked for**, and got six gates in — then the
+implementer was refused for the other half of the same rule:
+
+> The plan names `test_a_command_whose_working_directory_leaves_the_root_by_traversal_is_refused`,
+> `test_a_directory_reached_through_a_symlink_that_resolves_outside_the_root_is_refused` … and that
+> is not fully applied is not a plan that was applied, and reporting it as applied is the one thing a
+> traceability chain must never do.
+
+**So: two runs, two gates refused, and in both cases the system refused itself correctly.** No pull
+request yet, and the honest count is zero. What the two refusals name is specific and both is
+wiring rather than architecture:
+
+| what stopped it | what it is |
+|---|---|
+| the analysis stages' inspection did not carry the files the requirements were about | the file-contents fix was made for **discovery** and never checked for the stages after it |
+| the implementer wrote some of the plan's files | `AnUnrunTestError` and `AWriteThatChangesNothingError` fired as designed; the run refused rather than delivering half a plan |
+
 **And the duplicate rule refused a real issue the day it was written.** It asked to teach
 `shell.run_tests` a Python repository; the copy already had an open issue about the trust boundary
 of `shell.run_command`. Different files, different problems — and the rule fired anyway, because
