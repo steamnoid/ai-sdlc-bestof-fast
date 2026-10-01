@@ -37,6 +37,10 @@ from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.plan_node import PlanTheChange
 from aisdlc.tools.github_clone_repository import ClonedRepository
+from tests.is_a_named_path_a_file_of_the_clone import (
+    is_named_in_the_clone,
+    the_paths_named_in,
+)
 from tests.the_neighbouring_agent_pairs import (
     THE_NEIGHBOURING_PAIRS,
     ANeighbouringPair,
@@ -45,37 +49,9 @@ from tests.what_an_artifact_must_have_said import WHAT_EVERY_FINDING_MUST_HAVE_S
 
 pytestmark = pytest.mark.e2e
 
-# A path as these artifacts write them: **at least one slash**, then a name with a known suffix.
-# The slash is required and that was learned the hard way — a first run reported two agents
-# "inventing" `Dockerfile` in a repository that has none, which was not two agents inventing
-# anything. It was an agent saying the tests run in a Dockerfile. Prose is the only place a path
-# can come from here, because QaPlan and ArchitectureReport have no field linking a scenario to a
-# module — a real gap in the domain that a test may not paper over — and a mention and a citation
-# are the same characters in a sentence.
-WHAT_LOOKS_LIKE_A_PATH = re.compile(
-    r"\b(?:[\w.-]+/)+[\w.-]+\.(?:py|md|toml|json|yaml|yml|ini|txt)\b"
-)
-
-# A link to a file is not a path in the repository, and the two are the same characters: an agent
-# citing .github/workflows/gate.yml by its blob URL is citing it correctly. A first run reported
-# github.com/steamnoid/…/blob/main/.github/workflows/gate.yml as a path one of them invented,
-# which is the opposite of what happened. So the URLs come out before the paths are read.
-WHAT_IS_A_LINK_RATHER_THAN_A_PATH = re.compile(
-    r"(?:https?://|www\.)?[-.\w]*(?:github\.com|githubusercontent\.com)/\S*"
-)
-
 A_REQUEST = a_request_about(
     "a command may only run inside the checkout this run confined itself to"
 )
-
-
-def _every_path_named_in(texts: list[str]) -> set[str]:
-    """Every path-shaped token any of the artifacts mention."""
-    found: set[str] = set()
-    for text in texts:
-        without_the_links = WHAT_IS_A_LINK_RATHER_THAN_A_PATH.sub(" ", text)
-        found.update(WHAT_LOOKS_LIKE_A_PATH.findall(without_the_links))
-    return found
 
 
 def _every_artifact_text(an_artifact: object) -> list[str]:
@@ -104,26 +80,9 @@ def _every_artifact_text(an_artifact: object) -> list[str]:
     return the_texts
 
 
-def _is_named_in_the_clone(a_named_path: str, what_is_in_the_clone: set[str]) -> bool:
-    """Whether a path an agent wrote names a file of the clone, allowing for a lost leading dot.
-
-    **Suffix, not equality, and a first run learned why.** An agent wrote
-    `github/workflows/gate.yml` for a file this repository holds as `.github/workflows/gate.yml`,
-    and an equality check reported that as a path one of them invented. It is not invented, it is
-    written the way people write paths when they are typing rather than copying — and a check
-    strict enough to fail on a missing dot produces false failures, which is worse than no check
-    because it is believed.
-
-    **The comparison is a suffix on a path boundary, so `a/b.py` cannot match `xa/b.py`.**
-    """
-    for a_path_in_the_clone in what_is_in_the_clone:
-        if a_path_in_the_clone == a_named_path:
-            return True
-        if a_path_in_the_clone.endswith("/" + a_named_path):
-            return True
-        if a_path_in_the_clone.endswith("/" + a_named_path.lstrip("./")):
-            return True
-    return False
+def _every_path_named_in(texts: list[str]) -> set[str]:
+    """Every path either agent cited. The rule is the default tier's, and tested there."""
+    return the_paths_named_in(texts)
 
 
 def _what_is_in_the_clone(a_clone: ClonedRepository) -> set[str]:
@@ -206,7 +165,7 @@ def test_two_neighbouring_agents_do_not_contradict_each_other(
     everything_they_said = _every_artifact_text(the_first) + _every_artifact_text(the_second)
 
     for a_path in sorted(_every_path_named_in(everything_they_said)):
-        assert _is_named_in_the_clone(a_path, what_is_in_the_clone), (
+        assert is_named_in_the_clone(a_path, what_is_in_the_clone), (
             f"{a_pair.first} and {a_pair.second} between them name {a_path!r}, which is not a "
             f"file of the clone. There are {len(what_is_in_the_clone)} files there, so this is a "
             "path one of them invented rather than one it read"
