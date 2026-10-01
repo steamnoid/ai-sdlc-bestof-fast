@@ -874,9 +874,6 @@ def test_no_node_that_chooses_its_own_destination_still_carries_an_edge() -> Non
     a node that is told its destination are two designs, and a graph holding both cannot say which
     one it meant.
     """
-    import re
-
-    the_lifecycle_source = Path(lifecycle_module.__file__).read_text()
     # **The nodes whose functions return a `Command`, not the nodes they name.** The first
     # version of this check listed the two *destinations* — `write_what_the_change_says` and
     # `mark_the_work_item_delivered` — and failed on `add_edge("write_what_the_change_says",`,
@@ -888,11 +885,10 @@ def test_no_node_that_chooses_its_own_destination_still_carries_an_edge() -> Non
         "deliver_this_run",
     ]
 
+    every_node_the_graph_tells_where_to_go = _the_nodes_with_an_edge_out_of_them()
+
     for a_node in the_nodes_that_choose_their_own_destination:
-        still_being_told_where_to_go = re.search(
-            rf"add_edge\(\s*[\"']{re.escape(a_node)}[\"']\s*,", the_lifecycle_source
-        )
-        assert not still_being_told_where_to_go, (
+        assert a_node not in every_node_the_graph_tells_where_to_go, (
             f"`{a_node}` returns a Command naming its own destination, and the graph also carries "
             "an edge out of it. Both fire in the same step, so a run that refuses is diverted to "
             "the supervisor *and* carries on down the ordinary path, and LangGraph refuses it for "
@@ -937,3 +933,40 @@ def _the_refusals_this_node_hands_on() -> set[str]:
                 if isinstance(a_named, ast.Name):
                     the_names.add(a_named.id)
     return the_names
+
+
+def _the_nodes_with_an_edge_out_of_them() -> set[str]:
+    """The node names `add_edge` sends control *from*, parsed from the graph rather than its text.
+
+    **This is the same mistake as the `except` guard one commit earlier, in a different file.**
+    That check searched `apply_node` for refusal names and passed, because the file is prose about
+    refusals and a name in a comment matched as well as a name in a clause. This one searched
+    `lifecycle` for `add_edge("<node>",` — and `lifecycle` carries a long comment explaining
+    precisely this defect, which quotes the call it forbids. So the guard could not have failed for
+    the reason it exists, and it was written a few hours after I had already written down why that
+    is the worst property a check can have.
+
+    **The lesson worth keeping is that a guard needs a *negative* case, not just a passing one.**
+    Both of these passed. What caught them was deliberately breaking the thing and watching the
+    test fail, which is the only thing that distinguishes a check that is armed from one that is
+    merely green. Parsing cannot fix that habit — it makes the guard real, and the habit is still
+    what catches the next one.
+    """
+    import ast
+
+    the_lifecycle = ast.parse(Path(lifecycle_module.__file__).read_text())
+    the_nodes_with_an_edge_out: set[str] = set()
+    for a_statement in ast.walk(the_lifecycle):
+        if not isinstance(a_statement, ast.Call):
+            continue
+        the_name_of_what_was_called = getattr(a_statement.func, "attr", None)
+        if the_name_of_what_was_called not in {"add_edge", "add_conditional_edges"}:
+            continue
+        if not a_statement.args:
+            continue
+        the_node_it_leaves_from = a_statement.args[0]
+        if isinstance(the_node_it_leaves_from, ast.Constant) and isinstance(
+            the_node_it_leaves_from.value, str
+        ):
+            the_nodes_with_an_edge_out.add(the_node_it_leaves_from.value)
+    return the_nodes_with_an_edge_out
