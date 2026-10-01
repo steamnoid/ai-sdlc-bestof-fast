@@ -28,6 +28,8 @@ refusing to answer would make the common case the special one.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -180,15 +182,25 @@ def test_an_issue_with_no_body_is_still_a_duplicate() -> None:
         the_issues_listed_as_tracked("Add an expiry to the session cookie", already_filed)
 
 
-def test_filing_refuses_a_duplicate_before_anything_is_opened() -> None:
+def test_filing_refuses_a_duplicate_before_anything_is_opened(tmp_path: Path) -> None:
     """The backstop in the place it has to be: before the issue exists.
 
     **An issue that is opened and then found to be a duplicate has already landed.** Closing it
     again is a thing a person has to do on somebody else's board, and the person who has to do it
     is the one whose queue got longer. So the refusal is in `filing_what_the_briefing_found`,
     ahead of `open_the_issue`, rather than in the prompt that asked the model nicely.
+
+    **`tmp_path`, and a register opened in it, because this test was only ever passing on
+    somebody else's register.** It asks the filing path to prepare a table, which reaches the
+    register, and it never opened one — so it inherited whatever handle the last test file left
+    behind. That is the whole suite's result being a function of test order rather than of the
+    code, and it was invisible until one autouse fixture closed the register between tests.
     """
     import pytest as _pytest
+
+    from aisdlc.store.where_the_register_lives import the_register_lives_at
+
+    the_register_lives_at(tmp_path / "the-register.sqlite3")
 
     from aisdlc.agents.what_an_agent_judged import WhatAnAgentJudged
     from aisdlc.creative.an_opportunity import AnOpportunity

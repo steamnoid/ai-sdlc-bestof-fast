@@ -851,6 +851,8 @@ Stated rather than left to be discovered.
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
   | `test_a_python_repository_can_be_verified.py` | that a Python repository's suite is run with pip and pytest rather than npm, and that its collection listing is read |
   | `test_is_a_named_path_a_file_of_the_clone.py` | that a path an agent wrote is read the way a person wrote it — a link is not a path, a mention is not a citation, a lost leading dot is not a difference, and an abbreviation is not the file |
+  | `test_a_work_item_id_is_a_name_nobody_has_used.py` | that a work item's id — a directory, a branch, a thread and an API key at once — is unique when two are commissioned for the same request in the same second |
+  | `test_no_test_leaves_the_register_open_at_a_file_that_is_deleted.py` | that one autouse fixture closes the register after every test, so no test can inherit another's handle at a `tmp_path` that has been deleted — and that the fixture is still autouse |
   | `test_every_finding_is_held_to_saying_something.py` | that every finding this pipeline produces names the field it cannot leave empty, and that those fields exist on the model, so an empty artifact cannot be read as an answer |
   | `test_every_declared_neighbouring_pair_has_a_case.py` | that every two agents the pipeline runs back to back have a pair test, and that the order those pairs are cut from is the router's own order rather than a list somebody typed |
   | `test_every_stage_that_reasons_about_files_is_shown_them.py` | that no stage is handed a directory listing and then writes findings about files nobody in it has read |

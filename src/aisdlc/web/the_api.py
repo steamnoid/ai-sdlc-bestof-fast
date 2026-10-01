@@ -54,6 +54,7 @@ from aisdlc.creative.a_repository_briefing_itself import (
     the_issue_opener_this_deployment_has,
 )
 from aisdlc.creative.is_creative_mode_on import ACreativeSettingThatIsNotOnError
+from aisdlc.domain.a_name_nobody_has_used_for import a_name_nobody_has_used_for
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.store.the_board_reads import (
@@ -156,25 +157,8 @@ class ARequestSomebodyMade(BaseModel):
 
 
 def _a_work_item_id_for(repository: Repository, asked_for: str) -> str:
-    """A name nobody has used, because a work item's id is a branch, a directory and a thread.
-
-    **The repository's name, a slug of the request, and the moment — in that order.** The
-    repository comes first so a person can scan a list of branches and tell which project each is
-    for; the moment comes last so two requests for the same repository in the same minute are
-    still two runs. A uuid would need letters this system's branch rule refuses to carry, and a
-    timestamp alone would collide the moment two people ask for something at once.
-
-    **The slug is cut to a length a branch name can carry**, and cut at the end rather than
-    trimmed word by word: a branch name is read in a list of branches, and a long one is a line
-    that wraps. The moment is what makes it unique, so nothing is lost by cutting the prose.
-    """
-    the_moment = datetime.now(UTC)
-    the_words = "".join(
-        a_character if a_character.isalnum() else "-" for a_character in asked_for.lower()
-    )
-    the_slug = "-".join(a_part for a_part in the_words.split("-") if a_part)[:48].strip("-")
-
-    return f"{repository.name}-{the_slug}-{the_moment:%Y%m%d-%H%M%S}"
+    """A work item's id, and why it lives in one place rather than here. See the module."""
+    return a_name_nobody_has_used_for(repository, asked_for)
 
 
 # Briefings this process is holding, by id. **In memory, like the runs, and for the same
