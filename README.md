@@ -24,6 +24,8 @@ with the reason on the card.
 
 ---
 
+[![gate](https://github.com/steamnoid/ai-sdlc-bestof-fast/actions/workflows/gate.yml/badge.svg)](https://github.com/steamnoid/ai-sdlc-bestof-fast/actions/workflows/gate.yml)
+
 ## Run it
 
 ```bash
@@ -362,6 +364,13 @@ minutes after a run had pushed a branch** — a worse outcome than an untagged p
 distance nobody would defend. So a tag that cannot be created is not used and the pull request still
 goes out, untagged. The tag is how a person finds the work; the pull request is the work.
 
+**And it is proven against real GitHub, not only against a stand-in.**
+`tests/test_the_tag_reaching_real_github.py` files one real issue, reads it back through GitHub's
+own record of it, asserts the label is on the thing rather than in the request, and closes it
+again. It skips loudly unless a deployment states both `GITHUB_TOKEN` and
+`AISDLC_THE_REPOSITORY_TO_FILE_AGAINST`, because a test that files into a repository nobody named
+writes to a stranger's board.
+
 Set `AISDLC_PROJECT_NAME` when a project spans repositories or a monorepo's repository name is the
 container rather than the thing being worked on.
 
@@ -481,7 +490,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships eight test files, and each one is a claim
+  end-to-end tests were not copied. This repository ships nine test files, and each one is a claim
   rather than a category:
 
   | file | what it holds this repository to |
@@ -496,6 +505,7 @@ Stated rather than left to be discovered.
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
   | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
+  | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a
