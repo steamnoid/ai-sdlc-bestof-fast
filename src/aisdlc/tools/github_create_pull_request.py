@@ -104,7 +104,11 @@ def open_a_pull_request(
         )
 
     the_tag = the_tag_this_system_leaves(wanted.repository)
-    make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
+    the_labels = (
+        [the_tag]
+        if make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
+        else []
+    )
 
     answer = client.post(
         WHERE_A_PULL_REQUEST_IS_OPENED.format(
@@ -113,7 +117,7 @@ def open_a_pull_request(
         json={
             "title": wanted.title,
             "body": wanted.body,
-            "labels": [the_tag],
+            "labels": the_labels,
             "head": f"{wanted.head.owner}:{wanted.head.name}",
             "base": wanted.base,
         },

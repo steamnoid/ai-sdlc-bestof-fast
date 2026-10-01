@@ -43,6 +43,7 @@ A_REPOSITORY = Repository(owner="paligakrzychu", name="wellbeing-tracker-public"
 
 def _a_client_recording_what_it_was_asked_to_do(
     answer: httpx.Response | None = None,
+    answers_by_path: dict[str, httpx.Response] | None = None,
 ) -> tuple[httpx.Client, list[dict[str, object]]]:
     """A GitHub that records every call and answers whatever the test decided it should.
 
@@ -67,6 +68,15 @@ def _a_client_recording_what_it_was_asked_to_do(
                 "json": json_module.loads(request.content) if request.content else None,
             }
         )
+        # **One GitHub answering differently per endpoint, because that is the deployment this rule
+        # is about.** A token that can open a pull request and cannot create a label is not two
+        # hypotheticals — it is one real credential, and a double that answers the same to every
+        # call cannot express it. The first version of the test below filed the issue through a
+        # second, permissive client, which made the assertion pass for a reason that had nothing to
+        # do with the rule.
+        for a_path, its_answer in (answers_by_path or {}).items():
+            if str(request.url).endswith(a_path):
+                return its_answer
         return the_answer
 
     # **With the base URL the production client has**, because both tools address GitHub with
@@ -290,3 +300,91 @@ def test_the_setting_is_named_in_the_message_of_a_refusal() -> None:
     assert THE_SETTING_NAMING_THE_PROJECT == "AISDLC_PROJECT_NAME"
     assert os.environ is not None
     assert Path(__file__).exists()
+
+
+def test_a_deployment_that_cannot_create_labels_still_delivers() -> None:
+    """**The regression this whole test is here for, and it is one I shipped yesterday.**
+
+    Labels live on GitHub's *issues* API. Opening a pull request needs `pull_requests: write`;
+    creating a label needs `issues: write`. They are different permissions, and a deployment
+    provisioned for delivering — push a branch, open a pull request — has no reason to hold the
+    second one.
+
+    So the first version of this rule refused every delivery on such a deployment, with an error
+    about a label, twenty minutes after a run had done all the reasoning and pushed a branch. That
+    is a worse outcome than an untagged pull request by a distance nobody would defend: the tag is
+    how a person finds the work, and the pull request is the work.
+
+    **So a tag that cannot be made is not used, and the thing still goes out.** GitHub refuses an
+    issue or a pull request naming a label it does not know, so the tag is left off entirely rather
+    than sent and 422'd — an untagged delivery that succeeds beats a tagged one that does not.
+    """
+    a_client_that_is_refused_permission, _ = _a_client_recording_what_it_was_asked_to_do(
+        answer=httpx.Response(
+            403, json={"message": "Resource not accessible by integration"}
+        )
+    )
+
+    the_tag_is_usable = make_sure_the_tag_is_there(
+        a_client_that_is_refused_permission, "a-credential", A_REPOSITORY, "wellbeing"
+    )
+
+    assert the_tag_is_usable is False, (
+        "a deployment that was told it cannot create labels still believes it can, so every "
+        "delivery it makes will be refused for a label it has already been told about"
+    )
+
+    # **One credential, two answers: labels refused, pull requests fine.** That is a token with
+    # `pull_requests: write` and not `issues: write`, which is what a deployment provisioned for
+    # delivering actually holds.
+    the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do(
+        answers_by_path={
+            "/labels": httpx.Response(
+                403, json={"message": "Resource not accessible by integration"}
+            ),
+            "/pulls": httpx.Response(
+                201,
+                json={
+                    "number": 12,
+                    "html_url": "https://github.com/paligakrzychu/"
+                    "wellbeing-tracker-public/pull/12",
+                },
+            ),
+        }
+    )
+    the_pull_request = open_a_pull_request(
+        a_pull_request_to_open(
+            repository=A_REPOSITORY,
+            head=BranchOnRemote(owner="steamnoid", name="aisdlc/issue-12-abc"),
+            base="main",
+            title="A title",
+            body="A body.",
+        ),
+        the_client,
+        "a-credential",
+    )
+
+    assert the_pull_request.number == 12, (
+        "the pull request was not opened, so a deployment that cannot create labels cannot deliver "
+        "at all — twenty minutes of reasoning and a pushed branch lost to a cosmetic tag"
+    )
+    the_opening = what_it_was_asked[-1]["json"]
+    assert isinstance(the_opening, dict)
+    assert the_opening["labels"] == [], (
+        "the pull request went out carrying a label this deployment cannot create, so GitHub "
+        "refuses it and the work this run did is not delivered at all"
+    )
+
+
+def test_a_deployment_that_can_create_labels_gets_them() -> None:
+    """The other side of the same rule, so the test above cannot pass by never tagging anything."""
+    the_client, _ = _a_client_recording_what_it_was_asked_to_do()
+
+    the_tag_is_usable = make_sure_the_tag_is_there(
+        the_client, "a-credential", A_REPOSITORY, "wellbeing"
+    )
+
+    assert the_tag_is_usable is True, (
+        "a deployment that could have had the tag is being denied it, so the rule has stopped "
+        "tagging things rather than tagging what it can"
+    )

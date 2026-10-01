@@ -70,15 +70,25 @@ def the_tag_this_system_leaves(repository: Repository) -> str:
 
 def make_sure_the_tag_is_there(
     client: httpx.Client, credential: str, repository: Repository, tag: str
-) -> None:
-    """Create the label if the repository has not got it, and do nothing if it has.
+) -> bool:
+    """Create the label if the repository has not got it, and say whether it can be used at all.
 
-    **A 422 here is the success case and that is the whole subtlety.** GitHub answers a request to
+    **A 422 here is the success case and that is the first subtlety.** GitHub answers a request to
     create a label that already exists with 422 and a body saying so, which is the same status it
     uses for a genuinely invalid request. Treating it as failure would mean every filing after the
-    first refused, and treating it as failure to create is how a deployment ends up filing issues
-    without the tag it was configured with. So it is read as "it is already there", which is what it
-    means here, and every other answer is a refusal quoting GitHub's own words.
+    first refused, and treating it as failure to create is how a deployment ends up filing without
+    the tag it was configured with. So it is read as "it is already there", which is what it means
+    here.
+
+    **And a refusal is not an error, which is the second subtlety and the more important one.**
+    Labels live on GitHub's *issues* API: opening a pull request needs `pull_requests: write` and
+    creating a label needs `issues: write`, which are different permissions and a deployment
+    provisioned for delivering has no reason to hold the second. **A tag this deployment cannot
+    create is not used, and the issue or the pull request still goes out** — untagged rather than
+    refused. The first version of this raised, and it refused every delivery on such a deployment
+    with an error about a label, twenty minutes after a run had pushed a branch. The tag is how a
+    person finds the work; the pull request is the work, and losing it to lose the tag is not a
+    trade anybody would defend.
 
     **Before anything is opened, and not after.** An issue filed without its label is an issue
     somebody has to go and label by hand, and a pull request already open cannot be un-opened.
@@ -95,14 +105,4 @@ def make_sure_the_tag_is_there(
         headers=headers,
     )
 
-    if answer.status_code in {GITHUB_CREATED_IT, GITHUB_SAYS_IT_ALREADY_EXISTS}:
-        return
-
-    raise ALabelThisRunNeedsIsNotOnTheRepositoryError(
-        f"{tag!r} is not on {repository.owner}/{repository.name} and could not be put "
-        f"there, so nothing this run files will carry it. GitHub said: {answer.text}"
-    )
-
-
-class ALabelThisRunNeedsIsNotOnTheRepositoryError(Exception):
-    """The label the run writes with does not exist and cannot be made, so nothing is filed."""
+    return answer.status_code in {GITHUB_CREATED_IT, GITHUB_SAYS_IT_ALREADY_EXISTS}

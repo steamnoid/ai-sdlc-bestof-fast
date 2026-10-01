@@ -93,13 +93,17 @@ def open_an_issue(
         )
 
     the_tag = the_tag_this_system_leaves(wanted.repository)
-    make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
+    the_labels = (
+        [the_tag]
+        if make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
+        else []
+    )
 
     answer = client.post(
         WHERE_AN_ISSUE_IS_OPENED.format(
             owner=wanted.repository.owner, name=wanted.repository.name
         ),
-        json={"title": wanted.title, "body": wanted.body, "labels": [the_tag]},
+        json={"title": wanted.title, "body": wanted.body, "labels": the_labels},
         headers={
             "Authorization": f"Bearer {credential}",
             "Accept": "application/vnd.github+json",
