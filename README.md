@@ -72,6 +72,9 @@ noticed and an answer nobody asked for are the same failure wearing different na
 
 ```bash
 uv run pytest -q     # 37 tests, 6s, no network, no model, no credential, no container
+
+# The e2e tier is not separated here: `uv run pytest` is the whole suite, and a live-model run is
+# driven through the same board by starting the server with a `.env` in place.
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -350,7 +353,26 @@ Stated rather than left to be discovered.
   each looking like impatience rather than the wrong question: answer-whatever-appears,
   count-sixteen, and report-finished-by-returning-`None`. The fourth used the pattern the other
   tests already use, and the defect was not there.
-- ~~**The supervisor still has not fired inside a whole run.**~~ **It has.** It has been asked, by a real model,
+- ~~**The supervisor still has not fired inside a whole run.**~~ **It has** — on a whole run
+  through the real graph, and on that run it found the wiring was broken in a way no routing test
+  could see.
+- **And a live model has now made it seven gates on the same repository, twice refused by the
+  policy and never once by an exception.** The first refusal is still the strongest thing in this
+  file:
+
+  > The plan names `Dockerfile` as the only file to change and explicitly declares `tests_to_add`
+  > as empty, so nothing in this run will ever exercise the healthcheck it is adding. **A
+  > `HEALTHCHECK` whose path, port, or interval is wrong does not fail loudly — the container
+  > simply reports unhealthy forever** — and this plan contains no build-and-run step confirming
+  > the endpoint exists and that the container reaches "healthy".
+
+  The second is the same judgement made independently, at the verification gate, by reading the
+  suite rather than the plan: the two runs are indistinguishable, and the nine integration tests
+  that would exercise the interval were skipped in both. **A run whose plan adds no test is a run
+  the engine cannot check**, because the check that a test passes with the change undone needs a
+  test to undo it beside — so a genuinely unobservable change is caught by a person or a policy
+  reading the evidence, and not by the machinery. That is a design decision with a real cost, and
+  the cost is that the last line of defence is a judgement rather than an assertion. It has been asked, by a real model,
   with a real card and a real refusal, and it answered correctly — and its routing is now covered
   for all four refusals that reach it. What has not happened is an end-to-end run tripping one,
   and the reason is now clear rather than mysterious: **a gate refusal stops the run by design**,
