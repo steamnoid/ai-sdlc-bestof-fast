@@ -22,6 +22,8 @@ from __future__ import annotations
 import re
 from pathlib import PurePosixPath
 
+from pydantic import BaseModel
+
 # A path as these artifacts write them: **at least one slash**, then a name with a known suffix.
 # The slash is required because a mention and a citation are the same characters in a sentence,
 # and an extensionless word like `Dockerfile` is a mention far more often than it is a path.
@@ -86,3 +88,56 @@ def is_named_in_the_clone(a_named_path: str, what_is_in_the_clone: set[str]) -> 
         if _the_components_of(a_path_in_the_clone) == the_named:
             return True
     return False
+
+
+class HowANamedPathIsWrong(BaseModel):
+    """What is wrong with a path an agent wrote, in enough detail to act on.
+
+    **There are two of these and collapsing them into one loses the only thing a reader needs.**
+    A file that is not in the clone at all is an agent inventing something. A file that *is* in
+    the clone but was named with a prefix missing is an agent who knows the file and wrote it the
+    way people write paths when they are typing. The first is a hallucination and the second is
+    carelessness, and the remedy is different: one is a prompt problem and the other is a rule
+    about how to write a citation.
+
+    **Both are refused. Neither is excused.** A reader holding `aisdlc/agents/x.py` cannot open
+    it, and a traceability chain is only worth anything if every link in it opens. But the report
+    says which of the two it is, because a red run that says "invented" about a real file is a
+    red run nobody believes the next time.
+    """
+
+    is_in_the_clone: bool
+    how: str
+
+
+def how_a_named_path_is_wrong(
+    a_named_path: str, what_is_in_the_clone: set[str]
+) -> HowANamedPathIsWrong | None:
+    """`None` when the path is fine, and otherwise what is wrong with it and which file it meant.
+
+    **The search for the file it meant runs on the trailing components, and stops at two.** A path
+    that ends in the same two components as a file in the clone is that file, named from the
+    inside out; one that shares nothing with anything is an invention. Both are reported, and the
+    second one carries the real path so a reader can check the claim rather than take it.
+    """
+    if is_named_in_the_clone(a_named_path, what_is_in_the_clone):
+        return None
+
+    the_named = _the_components_of(a_named_path)
+
+    for a_path_in_the_clone in what_is_in_the_clone:
+        what_is_there = _the_components_of(a_path_in_the_clone)
+        the_tail = min(2, len(the_named))
+        if what_is_there[-the_tail:] == the_named[-the_tail:]:
+            return HowANamedPathIsWrong(
+                is_in_the_clone=True,
+                how=(
+                    f"the clone holds it as {a_path_in_the_clone!r}, so the agent knew the file "
+                    "and wrote a path from the inside out"
+                ),
+            )
+
+    return HowANamedPathIsWrong(
+        is_in_the_clone=False,
+        how="no file in the clone shares even its last two path components with that",
+    )

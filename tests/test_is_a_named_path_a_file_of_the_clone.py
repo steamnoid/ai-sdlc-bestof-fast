@@ -9,15 +9,22 @@ version of the function that was broken.
 from __future__ import annotations
 
 from tests.is_a_named_path_a_file_of_the_clone import (
+    how_a_named_path_is_wrong,
     is_named_in_the_clone,
     the_paths_named_in,
 )
 
+# **A miniature of the real clone, and it has to contain the file each case is about.** The first
+# version of this set had no `agents/` directory, so the case for a path missing its `src/` prefix
+# reported the agent as having invented a file the miniature simply did not have. A fixture that
+# is not representative produces confident nonsense.
 WHAT_THE_CLONE_HOLDS = {
     ".github/workflows/gate.yml",
     "src/aisdlc/tools/run_command.py",
     "src/aisdlc/tools/run_tests.py",
     "tests/test_what_two_real_runs_found.py",
+    "src/aisdlc/agents/what_an_agent_judged.py",
+    "src/aisdlc/agents/requirements.py",
     "README.md",
 }
 
@@ -74,3 +81,41 @@ def test_an_extensionless_mention_is_not_a_citation() -> None:
     """What a real run reported as invented: an agent saying the tests run in a Dockerfile."""
     assert the_paths_named_in(["the suite runs in a Dockerfile"]) == set()
     assert the_paths_named_in(["as docker/Dockerfile shows"]) == {"docker/Dockerfile"}
+
+
+def test_a_path_whose_prefix_is_missing_names_a_real_file_and_says_so() -> None:
+    """What a real run reported as invented, and it is not invented.
+
+    **The agent wrote `aisdlc/agents/what_an_agent_judged.py` for a file this repository holds as
+    `src/aisdlc/agents/what_an_agent_judged.py`.** It knew the file and lost a directory. Calling
+    that an invented path is a false accusation, and a false accusation is worse than a missed one
+    because it is believed.
+    """
+    what_is_wrong = how_a_named_path_is_wrong(
+        "aisdlc/agents/what_an_agent_judged.py", WHAT_THE_CLONE_HOLDS
+    )
+
+    assert what_is_wrong is not None, "that path is not in the clone, so something must be said"
+    assert what_is_wrong.is_in_the_clone, (
+        f"{what_is_wrong.how} — but src/aisdlc/agents/what_an_agent_judged.py is in this clone, so "
+        "the agent did not invent anything and the report must not say it did"
+    )
+    assert "src/aisdlc/agents/what_an_agent_judged.py" in what_is_wrong.how, (
+        "the report has to name the real path, so a reader can check the claim rather than take "
+        "it. A finding that says only 'wrong' is a finding nobody can act on"
+    )
+
+
+def test_a_path_matching_nothing_is_reported_as_invented() -> None:
+    """What a real run found: `docs/domain-glossary.md`, which is not in this repository at all."""
+    what_is_wrong = how_a_named_path_is_wrong("docs/domain-glossary.md", WHAT_THE_CLONE_HOLDS)
+
+    assert what_is_wrong is not None
+    assert not what_is_wrong.is_in_the_clone, (
+        "nothing in the clone ends in domain-glossary.md, so this is the other fault and saying "
+        "it is carelessness would let an invented file through"
+    )
+
+
+def test_a_correct_path_is_reported_as_nothing_wrong() -> None:
+    assert how_a_named_path_is_wrong("src/aisdlc/tools/run_tests.py", WHAT_THE_CLONE_HOLDS) is None

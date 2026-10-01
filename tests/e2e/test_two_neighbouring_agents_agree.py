@@ -38,7 +38,7 @@ from aisdlc.domain.repository import Repository
 from aisdlc.graph.plan_node import PlanTheChange
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from tests.is_a_named_path_a_file_of_the_clone import (
-    is_named_in_the_clone,
+    how_a_named_path_is_wrong,
     the_paths_named_in,
 )
 from tests.the_neighbouring_agent_pairs import (
@@ -165,10 +165,21 @@ def test_two_neighbouring_agents_do_not_contradict_each_other(
     everything_they_said = _every_artifact_text(the_first) + _every_artifact_text(the_second)
 
     for a_path in sorted(_every_path_named_in(everything_they_said)):
-        assert is_named_in_the_clone(a_path, what_is_in_the_clone), (
+        what_is_wrong = how_a_named_path_is_wrong(a_path, what_is_in_the_clone)
+        if what_is_wrong is None:
+            continue
+        assert not what_is_wrong.is_in_the_clone, (
             f"{a_pair.first} and {a_pair.second} between them name {a_path!r}, which is not a "
-            f"file of the clone. There are {len(what_is_in_the_clone)} files there, so this is a "
-            "path one of them invented rather than one it read"
+            f"file of the clone — there are {len(what_is_in_the_clone)} files there and "
+            f"{what_is_wrong.how}. That is an invented path, and it is the one that matters: a "
+            "reader following it arrives nowhere"
+        )
+        raise AssertionError(
+            f"{a_pair.first} and {a_pair.second} between them name {a_path!r}, and the clone "
+            f"holds it as {what_is_wrong.how}. So the agent knew the file and wrote a path from "
+            "the inside out. **This is carelessness, not invention**, and the two are reported "
+            "separately because the remedy differs: a prompt that stops an agent inventing files "
+            "will not stop it dropping a directory"
         )
 
     _what_must_hold_between_them(a_pair, the_first, the_second, what_is_in_the_clone)
