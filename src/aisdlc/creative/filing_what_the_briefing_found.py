@@ -38,6 +38,7 @@ from aisdlc.domain.the_issue_this_answers import TheIssueThisAnswers
 from aisdlc.domain.work_item import a_work_item_commissioned_for_an_agent
 from aisdlc.store.what_a_run_records import the_work_item_was_commissioned
 from aisdlc.store.where_the_register_lives import holding_the_register
+from aisdlc.tools.github_list_open_issues import AnOpenIssue, the_issues_listed_as_tracked
 
 # The name a filing is remembered under. **A hash of the opportunity's own words and not a
 # counter**, because a counter is a thing a retry has to carry and a hash is a thing it can be
@@ -86,6 +87,7 @@ def filing_what_the_briefing_found(
     the_report: TheOpportunitiesThisRepositoryOffers,
     chosen: Sequence[AnOpportunity],
     open_the_issue: OpenTheIssue,
+    what_was_already_tracked: Sequence[AnOpenIssue] = (),
 ) -> list[str]:
     """File each chosen opportunity as an issue and commission a work item for it.
 
@@ -102,11 +104,27 @@ def filing_what_the_briefing_found(
 
     **No projects root, because filing does not touch the disk.** It writes to GitHub and to the
     register, and a parameter it does not read would be a claim about this function that is false.
+
+    **A duplicate is refused before anything is opened, and that is the reason the list is here at
+    all.** The briefing agent is shown the repository's open issues and told not to propose them
+    again; a prompt is not a check, and the model may ignore the list or re-word the work it names.
+    An issue that is opened and then found to be a duplicate has already landed in somebody's
+    queue and can only be removed by a person closing it — so the refusal has to happen here,
+    before `open_the_issue`, and not in the prompt that asked nicely.
+
+    **The comparison is against the list the briefing was shown**, recorded on the report. An issue
+    filed between the briefing and this pick is not in that list, and the window is real: the list
+    is read once, at briefing time. That is a limit rather than a fix, and it is written down
+    because a reader deciding whether this is safe needs to know it.
     """
     _the_table_was_prepared()
     the_work_item_ids: list[str] = []
 
     for an_opportunity in chosen:
+        the_issues_listed_as_tracked(
+            an_opportunity.what_could_be_done, what_was_already_tracked
+        )
+
         what_was_filed = _what_identifies(an_opportunity)
         already = _the_filing_made_already(what_was_filed)
 

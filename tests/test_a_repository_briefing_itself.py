@@ -41,6 +41,7 @@ from aisdlc.store.the_register_of_work_items import the_work_item_registered_at
 from aisdlc.store.where_the_register_lives import holding_the_register, the_register_lives_at
 from aisdlc.tools.github_client import Addresses
 from aisdlc.tools.github_clone_repository import a_repository_to_clone, clone_repository
+from aisdlc.tools.github_list_open_issues import AnOpenIssue
 
 A_REPOSITORY = Repository(owner="pikuniu", name="a-project")
 THE_NEXT_ISSUE_NUMBER = 41
@@ -156,18 +157,23 @@ def _a_briefing_with(*opportunities: AnOpportunity) -> TheOpportunitiesThisRepos
 
 def _the_seams_a_real_run_would_not(
     the_report: TheOpportunitiesThisRepositoryOffers, the_bare: Path
-) -> tuple[object, object]:
+) -> tuple[object, object, object]:
     """A briefing that returns a prepared report, and a clone from a local repository.
 
-    **Both seams at once and in one place, because a test that passes one and forgets the other
-    is a test that reached GitHub.** The first version of this file handed in a briefing and let
-    the clone planner default, so the run under test did the one thing it was not supposed to: it
-    tried to clone `pikuniu/a-project` from github.com and died on a credential prompt rather
-    than on anything this file is about.
+    **All three seams at once and in one place, because a test that passes one and forgets
+    another is a test that reached GitHub.** The first version of this file handed in a briefing
+    and let the clone planner default, so the run under test did the one thing it was not supposed
+    to: it tried to clone `pikuniu/a-project` from github.com and died on a credential prompt
+    rather than on anything this file is about. The issue reader arrived later and repeated it —
+    a briefing that reaches for the open issues of a repository this test made, on this machine,
+    against github.com.
 
-    **Two replacements, both named.** The model is replaced because a briefing against a real
+    **Three replacements, all named.** The model is replaced because a briefing against a real
     model takes minutes and this file is about what happens to the answer rather than the answer.
-    The address is replaced because the repository is one this test made, on this machine.
+    The address is replaced because the repository is one this test made, on this machine. The
+    issue list is replaced with an empty one because **a repository with no issues is the common
+    real case** and is worth testing — what is *not* worth testing is a unit suite reading a
+    stranger's repository.
     """
 
     def planning(source: Repository, into: Path):
@@ -177,10 +183,15 @@ def _the_seams_a_real_run_would_not(
             into,
         )
 
-    def briefing(clone, repository, how_many: int = 5) -> TheOpportunitiesThisRepositoryOffers:
+    def briefing(
+        clone, repository, how_many: int = 5, what_is_already_tracked=()
+    ) -> TheOpportunitiesThisRepositoryOffers:
         return the_report
 
-    return briefing, planning
+    def no_issues_are_open(_repository: Repository) -> list[AnOpenIssue]:
+        return []
+
+    return briefing, planning, no_issues_are_open
 
 
 def _an_issue_opener_that_records() -> tuple[object, list[AnOpportunity]]:

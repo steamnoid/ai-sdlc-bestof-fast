@@ -425,6 +425,41 @@ by pushing again and reading `GH006: Protected branch update failed`.
 Not required: a second human. One approval was the default and it makes a one-person repository
 unmergeable, which is not a safety property.
 
+## A briefing reads the issues, and filing refuses a duplicate anyway
+
+**Two changes, because one of them is not enough.**
+
+**The briefing is shown what is already tracked.** A model told to "propose work" proposes work it
+knows about — it is a retrieval task and it recalls a different project. `github.list_open_issues`
+reads the open issues of whatever repository is being briefed, and the prompt lists them and says
+not to propose them again. **No credential**, because issue listing is public where filing is not:
+a briefing is a reading operation all the way through, and making it need a token would put the
+harmless half of creative mode behind the same door as the half that touches a stranger's board.
+
+**And filing refuses a duplicate anyway.** A prompt is not a check — this repository has a standing
+rule about that, learned from a model citing a file that did not exist while being told to cite
+real ones. The model may ignore the list, misread it, or re-word the work it names, and **an issue
+that is opened and then found to be a duplicate has already landed in somebody's queue** and can
+only be removed by a person closing it. So the refusal is in `filing_what_the_briefing_found`,
+ahead of `open_the_issue`.
+
+**The comparison is about the work, not the string.** Two titles for the same work rarely match as
+text, so this compares the words they share — after dropping the words that appear in nearly every
+title, because "Add a test" and "Add a health endpoint" share `Add` and nothing else, and refusing
+the second because of the first would make creative mode useless on any repository with a backlog.
+Two meaningful words in common is the threshold. **That is a judgement, and the cost of being wrong
+is asymmetric**: a duplicate is noise in a queue, a dropped opportunity is work nobody hears about.
+
+**A repository with no issues says so in one line** rather than saying nothing, because "nobody has
+filed anything" and "you were not shown anything" read identically to a model and only one is true.
+
+**And GitHub refusing to answer refuses the briefing**, rather than returning an empty list. An
+empty list reads as "nothing is tracked", which is a fact — and a false one would mean proposing
+work a team has already agreed to do, which is the exact failure this is for.
+
+**The limit, named.** The list is read once, at briefing time. An issue filed between the briefing
+and a person's pick is not in it.
+
 ## What is not built
 
 Stated rather than left to be discovered.
@@ -541,7 +576,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships nine test files, and each one is a claim
+  end-to-end tests were not copied. This repository ships ten test files, and each one is a claim
   rather than a category:
 
   | file | what it holds this repository to |
@@ -557,6 +592,7 @@ Stated rather than left to be discovered.
   | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
   | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
+  | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a
