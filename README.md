@@ -543,3 +543,4 @@ Stated rather than left to be discovered.
   This repository was assembled for speed and carries one test, `ruff`, and a non-strict `mypy`.
   That is a real trade: the engine's safeguards are not reproduced here, and the engine is where
   they still run.
+a line
