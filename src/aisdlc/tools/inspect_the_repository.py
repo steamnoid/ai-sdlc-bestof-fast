@@ -181,6 +181,15 @@ DIRECTORIES_THAT_HOLD_SOMEONE_ELSES_CODE = (
     "target",
 )
 
+DIRECTORIES_THAT_HOLD_THE_PROJECTS_OWN_TESTS = (
+    "test",
+    "tests",
+    "testing",
+    "spec",
+    "specs",
+    "__tests__",
+)
+
 # How deep the search goes. Deep enough to find `web-app/src/app/api/.../route.ts` and shallow
 # enough that a generated tree cannot become the answer on its own.
 HOW_DEEP_THE_SEARCH_GOES = 6
@@ -313,12 +322,32 @@ def _every_source_file_in(inside: Path) -> list[str]:
             its_name not in FILES_NAMED_WITHOUT_AN_EXTENSION
         ):
             continue
-        if not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER):
+        if not (
+            _it_lives_where_tests_live(its_parts)
+            or any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER)
+        ):
             continue
 
         found.append((len(its_parts), str(a_path.relative_to(inside))))
 
     return [a_path for _, a_path in sorted(found)]
+
+
+def _it_lives_where_tests_live(its_parts: tuple[str, ...]) -> bool:
+    """Whether a path runs through a directory whose job is to hold this project's own tests.
+
+    **The third time a file has been invisible because its *name* did not match a list**, and
+    the same comment above the list says why it keeps happening: the word list is framed around
+    what a *change* tends to touch, and a test is named after what it asserts rather than after
+    a subsystem. `test_a_python_repository_can_be_verified.py` contains none of those words, so
+    the entire suite of this repository was shown to nobody.
+
+    Location is the honest signal here. A directory called `tests` holds tests whatever the files
+    inside are called, and every language in every repository agrees on the name because it is
+    the one thing that has to mean the same thing to a person reading a path and to the tool
+    walking it.
+    """
+    return any(a_part in DIRECTORIES_THAT_HOLD_THE_PROJECTS_OWN_TESTS for a_part in its_parts)
 
 
 def _the_text_of(inside: Path, a_path: str) -> str | None:

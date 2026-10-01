@@ -590,6 +590,42 @@ def test_a_file_named_without_an_extension_is_still_shown_to_a_model(
     )
 
 
+def test_a_test_that_asks_for_anything_is_still_shown_to_a_model(
+    a_clone_of_a_real_repository: ClonedRepository,
+) -> None:
+    """A test's name is a sentence about behaviour, and a sentence carries no keywords.
+
+    **The selection rule was "does a word from a fixed list appear in this file's name", and
+    every test in this repository is named after what it asserts** — `a_python_repository_can_be
+    _verified`, `a_card_never_names_a_framework_node_as_a_step` — so not one of them matched and
+    the entire suite was invisible to every agent in this system.
+
+    That is the same defect the Dockerfile had, one level down, and the comment above the word
+    list already says why: *a selection framed around one consumer's question is the wrong
+    selection for the others*. The list grew once for security, once for what builds and deploys,
+    and each time it was patched by adding words — which is how the suite came to be missing.
+
+    **A file under a test directory is selected by where it lives, not by what it is called.**
+    Nobody names a test after a keyword, because the name's job is to say what is asserted.
+    """
+    from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
+
+    the_inspection = an_inspection_of_the_code(a_clone_of_a_real_repository)
+
+    for a_test_that_asks_for_anything in (
+        "tests/test_a_thing_that_has_nothing_to_do_with_any_keyword.py",
+    ):
+        assert a_test_that_asks_for_anything in the_inspection, (
+            f"{a_test_that_asks_for_anything} is not in the inspection. A run that was handed "
+            "this repository's tests could not read them, so it planned new ones beside the "
+            "old ones it had never seen — which is what four refusals in a row were about"
+        )
+    assert "def test_a_placeholder" in the_inspection, (
+        "the test is listed by name but its contents are not, so the file is named and unread — "
+        "the shape of a citation a report cannot back"
+    )
+
+
 def test_one_inspection_built_for_one_consumer_is_not_handed_to_another(
     a_clone_of_a_real_repository: ClonedRepository,
 ) -> None:
@@ -664,6 +700,13 @@ def a_clone_of_a_real_repository(tmp_path: Path):
     )
     (a_working_copy / ".gitignore").write_text("node_modules\n", encoding="utf-8")
     (a_working_copy / "package.json").write_text('{"name": "a-project"}\n', encoding="utf-8")
+    the_tests = a_working_copy / "tests"
+    the_tests.mkdir()
+    (the_tests / "test_a_thing_that_has_nothing_to_do_with_any_keyword.py").write_text(
+        "def test_a_placeholder() -> None:\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
     _git(a_working_copy, "add", ".")
     _git(a_working_copy, "commit", "-m", "the first commit")
     _git(a_working_copy, "remote", "add", "origin", str(the_bare))
