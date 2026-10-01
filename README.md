@@ -589,6 +589,41 @@ approved** — discovery, requirements, QA plan, architecture, security — the 
 analysis chain has cleared in one run. The discovery report marked its own gaps honestly, naming
 `run_command.py` and the unseen test files as not shown rather than writing about them anyway.
 
+**Run seven** cleared the analysis chain again and reached a stage nothing before it had: the
+implementer. It refused on a rule that turned out to be wrong.
+
+The plan named seven tests the way a person writes them for `pytest`:
+
+```text
+tests/test_what_two_real_runs_found.py::test_the_checkout_is_a_place_and_not_a_string_prefix…
+```
+
+and the guard that ends a change compares what the plan named against the paths the implementer
+wrote. **`a.py::test_x` can never equal `a.py`**, so it refused naming all seven — whatever the
+implementer had done. `tests_to_add` is a list of strings and nothing checks a string is a path,
+so a model may be more specific than the field without anything objecting. That is the same shape
+as the Dockerfile finding, one level down: **the field is not what the model obeys.**
+
+The file part is now taken on both sides, because writing the file is what the plan asked for —
+and taking the node part from one side alone would let a plan claim `a.py::test_x` while the
+implementer wrote `b.py`. Comparing the file keeps the file the claim, which is what the trace
+says afterwards.
+
+**Run eight** cleared the analysis chain for the third time and was refused at the plan — on a
+file name, and this one was the operator's fault rather than the system's. The request had said
+*extend `tests/test_what_two_real_runs_found.py` rather than creating a parallel one*, which was
+right for the run before it and wrong for this one: that file is named after a past finding, so
+appending new tests to it made the plan look like it was naming work retrospectively.
+
+The gate's objection was correct and the instruction behind it was not, and the honest resolution
+is not to argue with the gate. A test belongs in a file named after the rule it asserts, which is
+the same convention every other test in this repository already follows and the one thing the
+operator's shortcut had quietly broken.
+
+**The gate also asked for something the request never did**, and it is worth keeping: the plan
+never stated *which boundary is being enforced, what input is untrusted, or what the check
+rejects*. A plan that adds a trust check without saying what it trusts is thin, and a name being
+acceptable is not the same as a plan being complete.
 **And then the run crashed, rather than being refused:**
 
 ```text
