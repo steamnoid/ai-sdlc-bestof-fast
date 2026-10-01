@@ -324,6 +324,47 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 
 ---
 
+## Every issue and pull request carries the project's full name
+
+**An issue lands in a queue among hundreds and a pull request in a review list among dozens**, and
+with nothing on them saying which project asked, the only way to tell a briefing's issue from a
+person's is to read every body and recognise the formatting — which stops working silently the
+moment the formatting changes.
+
+**The tag is the full name, `owner/name`, and not the name on its own.** A repository name is only
+unique within an owner: two forks of one project share a name, and a bare name filed by both would
+put their work under one label and make the filter lie. `Repository.address` supplies it, which is
+already the one place that joins the halves.
+
+**One rule, one module, read by both writes.** `github.open_an_issue` and
+`github.create_pull_request` are the only two things here that write to a repository somebody else
+owns. A rule stated in each is two rules that drift — somebody tags issues and forgets pull requests,
+and every filing after that is half-tagged, with neither tool individually wrong. A test reads both
+against the same rule.
+
+**And the label is created first, because GitHub refuses an issue carrying a label it has never
+heard of.** A 422 there reads as "the delivery failed" and costs somebody twenty minutes of
+reasoning to diagnose. A 422 to the *creation* is success, because a label that already exists is
+exactly what GitHub says when it refuses to create one — which is what makes filing several issues
+against one repository work at all.
+
+**It costs one write per delivery, and after the first that write is refused.** A deployment running
+ten deliveries against one repository makes ten label requests and GitHub answers nine with 422.
+Caching it would avoid those, and would also mean a label deleted halfway through a run's life is
+silently absent from every filing after it — found out by a person filtering by project and seeing
+nothing. A wasted write is visible in a rate limit; a stale cache is visible in a wrong answer.
+
+**And a deployment that cannot create labels still delivers.** Labels live on GitHub's *issues*
+API: opening a pull request needs `pull_requests: write`, creating a label needs `issues: write`,
+and a deployment provisioned for delivering has no reason to hold the second. **The first version
+of this rule refused every delivery on such a deployment, with an error about a label, twenty
+minutes after a run had pushed a branch** — a worse outcome than an untagged pull request by a
+distance nobody would defend. So a tag that cannot be created is not used and the pull request still
+goes out, untagged. The tag is how a person finds the work; the pull request is the work.
+
+Set `AISDLC_PROJECT_NAME` when a project spans repositories or a monorepo's repository name is the
+container rather than the thing being worked on.
+
 ## What is not built
 
 Stated rather than left to be discovered.
