@@ -227,10 +227,9 @@ def test_filing_refuses_a_duplicate_before_anything_is_opened() -> None:
             the_report,
             [an_about_being_filed],
             opening,
-            what_was_already_tracked=[
-                an_issue
-                for an_issue in read_the_open_issues(*_issues_about_session_cookies())
-            ],
+            what_was_already_tracked=read_the_open_issues(
+                *_issues_about_session_cookies()
+            ),
         )
 
     assert what_was_opened == [], (
