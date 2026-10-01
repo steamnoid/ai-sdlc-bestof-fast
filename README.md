@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 35 tests, 4s, no network, no model, no credential, no container
+uv run pytest -q     # 36 tests, 5s, no network, no model, no credential, no container
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
@@ -320,7 +320,36 @@ worked a moment earlier. There is now one lock, taken by both, in one module.
 
 Stated rather than left to be discovered.
 
-- **The supervisor still has not fired inside a whole run, and the reason is now known.** It has been asked, by a real model,
+- ~~**Every repair in this system crashed the run.**~~ **Fixed, and it is the most important
+  finding in this repository's history, because it made the whole supervisor unreachable.** The
+  node that makes the change returned a plain state update on success and a `Command(goto=...)` on
+  a repairable refusal — *and* the graph also carried a static edge out of that node. A
+  `Command`'s `goto` and a static edge from the same node **both fire**. So a refusal did not
+  divert the run: the run went to the supervisor *and* carried on down the ordinary path, the two
+  arrived at the same node in the same step, both wrote `requested_stage`, and LangGraph refused
+  it:
+
+      At key 'requested_stage': Can receive only one value per step.
+
+  The refusal was correct, the routing was correct, the supervisor ran, and the run still died —
+  **at the moment the repair was being performed, with a message about concurrent writes rather
+  than about the repair.** Every refusal-routing test here passed, because they call the function
+  and read the `Command` it returns; the defect was entirely in the wiring, and no unit test
+  builds the graph. The node now names its own destination on both outcomes and carries no edge,
+  which is what the supervisor already did and for the same reason.
+- **A repair re-presents the verification gate, and that is correct.** A person approved it *for a
+  change*; the run then found the change did not happen; asking again is the only honest thing
+  left, and delivering on that approval would be delivering something nobody saw. It is the reason
+  a whole-run test cannot use the "nobody has answered yet" wait — one gate genuinely repeats
+  among eight that are each read twice by a race in the same endpoint.
+- **Open, and not answered here: a run that repairs does not reach `DONE`.** A run that does not
+  repair ends at `DONE`, and the one that repairs ends with all eight gates approved, a delivery
+  approved, and the register still at `AWAITING_HUMAN_APPROVAL`. That is either a defect in the
+  delivery transition after a repair or an artefact of the test's double, and this work has not
+  isolated which — so the test asserts what it can see (the run stopped asking, every gate was
+  seen, the supervisor was asked once about one file) and the register is written down here
+  instead of asserted as though it were right.
+- ~~**The supervisor still has not fired inside a whole run.**~~ **It has.** It has been asked, by a real model,
   with a real card and a real refusal, and it answered correctly — and its routing is now covered
   for all four refusals that reach it. What has not happened is an end-to-end run tripping one,
   and the reason is now clear rather than mysterious: **a gate refusal stops the run by design**,

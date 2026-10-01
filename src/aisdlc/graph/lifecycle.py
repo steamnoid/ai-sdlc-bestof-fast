@@ -571,7 +571,12 @@ def _the_implementation_stage(
     graph.add_edge("apply_the_pickup_by_the_implementer", "begin_implementing_the_plan")
     graph.add_edge("begin_implementing_the_plan", "apply_the_implementation_begun")
     graph.add_edge("apply_the_implementation_begun", "make_and_verify_the_change")
-    graph.add_edge("make_and_verify_the_change", "write_what_the_change_says")
+    # **No edge out of the node that makes the change, and the node names where it goes.** It
+    # returns a `Command` on both outcomes — a refusal goes to the supervisor, a success goes to
+    # `write_what_the_change_says` — and an edge here would fire *alongside* whichever `goto`
+    # it chose. That is not a theoretical concern: it sent every repair down both paths at once
+    # and LangGraph refused the run with "Can receive only one value per step" at
+    # `requested_stage`. The same rule the supervisor already follows, for the same reason.
     graph.add_edge("write_what_the_change_says", "hand_the_verification_to_a_human")
     graph.add_edge(
         "hand_the_verification_to_a_human", "apply_the_handover_of_the_verification"

@@ -48,10 +48,29 @@ ApplyAndVerify = Callable[
 THE_ARTIFACT_APPLYING_PRODUCES = "VerificationReport"
 ITS_FIRST_VERSION = 1
 
+WHERE_THE_VERIFICATION_IS_WRITTEN = "write_what_the_change_says"
+"""The node this one hands to on success, named here because it is part of what this node does.
+
+**Both outcomes of this node name their own destination, and there is no edge out of it.** That
+is not a style preference; it is the fix for a defect a whole run found. This node returned a
+plain state update on success and a `Command(goto=...)` on a repairable refusal, while the graph
+also carried a static edge from it to the next node. A `Command`'s `goto` and a static edge out of
+the same node both fire, so a refusal did not divert the run — the run went to the supervisor
+*and* carried on down the ordinary path, and the two arrived at the same node in the same step
+and both wrote `requested_stage`. LangGraph refused it:
+
+    At key 'requested_stage': Can receive only one value per step.
+
+So **every repair in this system crashed the run**, at the moment the repair was being performed,
+with a message about concurrent writes rather than about the repair. Every refusal-routing test
+here passed, because they call the function and read the `Command` it returns; none of them
+builds the graph, and the defect was entirely in the wiring.
+"""
+
 
 def apply_and_verify_in_this_run(
     state: AgentState, apply_and_verify: ApplyAndVerify
-) -> Command | dict:
+) -> Command:
     """The change the approved plan asked for, the suite's answer to it, and what to present.
 
     The presented artifact is the **verification**, not the change. A person is being asked
@@ -101,9 +120,12 @@ def apply_and_verify_in_this_run(
         projects_root=state["projects_root"],
     )
 
-    return {
-        "written_files": delivered.written,
-        "verification_report": delivered.verification,
-        "presented_artifact_id": THE_ARTIFACT_APPLYING_PRODUCES,
-        "presented_artifact_version": ITS_FIRST_VERSION,
-    }
+    return Command(
+        goto=WHERE_THE_VERIFICATION_IS_WRITTEN,
+        update={
+            "written_files": delivered.written,
+            "verification_report": delivered.verification,
+            "presented_artifact_id": THE_ARTIFACT_APPLYING_PRODUCES,
+            "presented_artifact_version": ITS_FIRST_VERSION,
+        },
+    )
