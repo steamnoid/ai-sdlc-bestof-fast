@@ -97,30 +97,46 @@ def _a_client_recording_what_it_was_asked_to_do(
     )
 
 
-def test_the_tag_is_the_full_project_name_and_a_setting_overrides_it(
+def test_the_tag_is_this_system_s_own_project_and_never_the_repository_it_files_into(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The **full** name — owner and name together — because a bare name cannot say which project.
+    """**The rule, and it is the opposite of what this file asserted for six attempts.**
 
-    **A repository name is only unique within an owner, and a tag that cannot tell two apart
-    cannot answer the only question it is filed under.** Two forks of one project share a name, and
-    `wellbeing-tracker-public` is a plausible thing for more than one person to own. Filed by both
-    under one bare label, the filter would answer "which project asked for this?" with a name that
-    does not, and the person filtering would have no way to know that.
+    The tag is the project that *files*, not the repository a run files into. A run that briefs
+    `paligakrzychu/wellbeing-tracker-public` and opens issues there labels them with **this
+    system's** name — because a tag answers *who produced this*, and that is a fact about the
+    codebase, not about where the work landed.
 
-    `owner/name` is also what GitHub itself calls a repository's full name, so the label and the
-    thing it names are one string — the one a reader would type.
+    Labelling somebody else's repository with their own name is worse than no label at all: it
+    looks like a tag about their project, answers nothing about which tool wrote the issue, and
+    would make two automations filing into one repository indistinguishable to a person reading
+    the queue. And **the function takes no repository**, which is the part that stops it happening
+    again — the first version took one, it was the only name in scope, and it was the wrong one.
 
-    **And a setting overrides it, because a project and a repository are not always the same
-    thing.** A deployment can file for several repositories under one project name, and a monorepo's
-    repository name is the container rather than the thing being worked on.
+    **And a deployment that forks this states its own name.**
     """
     monkeypatch.delenv(THE_SETTING_NAMING_THE_PROJECT, raising=False)
 
-    assert the_tag_this_system_leaves(A_REPOSITORY) == "paligakrzychu/wellbeing-tracker-public"
+    assert the_tag_this_system_leaves() == "steamnoid/ai-sdlc-bestof-fast"
 
-    monkeypatch.setenv(THE_SETTING_NAMING_THE_PROJECT, "wellbeing")
-    assert the_tag_this_system_leaves(A_REPOSITORY) == "wellbeing"
+    monkeypatch.setenv(THE_SETTING_NAMING_THE_PROJECT, "steamnoid/ai-sdlc")
+    assert the_tag_this_system_leaves() == "steamnoid/ai-sdlc"
+
+
+def test_the_tag_does_not_depend_on_which_repository_is_being_filed_into() -> None:
+    """Two different targets, one tag — which is what makes the tag mean anything.
+
+    **The assertion is about the function taking no argument at all.** A test that filed into two
+    repositories and compared the tags would pass against the wrong version too, because the wrong
+    version returns the target and two *different* targets give two *different* tags — so the test
+    has to be about the shape, not the values.
+    """
+    import inspect
+
+    assert not inspect.signature(the_tag_this_system_leaves).parameters, (
+        "the tag takes a repository again, which is the mistake that made every issue this system "
+        "filed on somebody else's project carry that project's own name"
+    )
 
 
 def test_a_setting_that_is_blank_falls_back_to_the_repository_name(
@@ -135,7 +151,7 @@ def test_a_setting_that_is_blank_falls_back_to_the_repository_name(
     """
     monkeypatch.setenv(THE_SETTING_NAMING_THE_PROJECT, "   ")
 
-    assert the_tag_this_system_leaves(A_REPOSITORY) == "paligakrzychu/wellbeing-tracker-public"
+    assert the_tag_this_system_leaves() == "steamnoid/ai-sdlc-bestof-fast"
 
 
 def test_the_tag_is_created_when_the_repository_does_not_have_it_yet() -> None:
@@ -216,7 +232,7 @@ def test_an_issue_is_filed_carrying_the_tag() -> None:
     assert the_filing["json"] == {
         "title": "Add a health endpoint",
         "body": "Why it is worth doing.",
-        "labels": ["paligakrzychu/wellbeing-tracker-public"],
+        "labels": ["steamnoid/ai-sdlc-bestof-fast"],
     }, (
         "the issue was filed without the project tag, so on a busy repository there is no way to "
         "tell a briefing's issue from a person's without reading every body"
@@ -266,7 +282,7 @@ def test_the_two_writes_ask_for_the_same_tag() -> None:
     findable and the pull requests are not. No test of either tool alone would notice, because each
     one is individually correct — which is the argument for reading both against the same rule.
     """
-    the_tag = the_tag_this_system_leaves(A_REPOSITORY)
+    the_tag = the_tag_this_system_leaves()
 
     the_client, what_it_was_asked = _a_client_recording_what_it_was_asked_to_do()
     open_an_issue(
