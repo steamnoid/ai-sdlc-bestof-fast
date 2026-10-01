@@ -435,10 +435,21 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships four test files — the end-to-end run,
-  the two defects a real run found, the briefing, and the supervisor — because those are the
-  claims being made. The engine's own suite is where the per-agent contracts are proven, and it
-  still exists in `ai-sdlc-os`.
+  end-to-end tests were not copied. This repository ships six test files, and each one is a claim
+  rather than a category:
+
+  | file | what it holds this repository to |
+  |---|---|
+  | `test_a_run_from_a_request_to_a_delivery` | a run from a sentence to a delivery, and both repairs walked end to end |
+  | `test_what_two_real_runs_found` | the defects two real runs found, and the inspections that carry the code now |
+  | `test_the_supervisor_deciding_what_to_repeat` | every refusal routes to the supervisor, and no node chooses a destination *and* carries an edge |
+  | `test_a_repository_briefing_itself` | a repository briefs itself and filing is refused without a credential |
+  | `test_the_tag_this_system_leaves_on_what_it_writes` | every issue and pull request carries the project's full name |
+  | `test_whether_anything_observed_the_change` | the rule that catches a change nothing observed, and its one gap |
+
+  The engine's own suite is where the per-agent contracts are proven, and it still exists in
+  `ai-sdlc-os`. **Three of these six did not exist a week ago**, and two of them exist because a
+  check this repository had written could not have failed.
 - **The quality gates the engine was built under.** Strict TDD, the readability guards, the
   glossary guard, the per-cycle commit discipline, `mypy --strict`, the e2e and container tiers.
   This repository was assembled for speed and carries one test, `ruff`, and a non-strict `mypy`.
