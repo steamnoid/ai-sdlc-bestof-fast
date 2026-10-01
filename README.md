@@ -381,9 +381,15 @@ own record of it, asserts the label is on the thing rather than in the request, 
 again. It skips loudly unless a deployment states both `GITHUB_TOKEN` and
 `AISDLC_THE_REPOSITORY_TO_FILE_AGAINST`, because a test that files into a repository nobody named
 writes to a stranger's board. **It is what found the pull-request bug above**, by opening a real
-pull request and reading GitHub's record of it rather than its answer. **It leaves one closed,
-labelled issue per run** — closing is not deleting, and the closed issue *is* the visible record
-that the tag arrived.
+pull request and reading GitHub's record of it rather than its answer. **It also opens, labels, reads back, closes and deletes a real pull request**, and that is the
+half which was broken: `labels` in the create-pull-request payload is accepted and discarded, so
+eleven request-level assertions passed while every pull request arrived untagged. **The branch is
+genuinely deleted; the pull request is only closed**, because GitHub has no endpoint for deleting
+one — which is the same kind of claim as the field it does ignore, and this file held one too.
+
+**Each run leaves one closed issue and one closed pull request behind.** Both are opt-in, and both
+are the visible record that the tag arrived; a deployment running these on every push accumulates
+them, which is a cost to know about rather than a reason not to file.
 
 Set `AISDLC_PROJECT_NAME` when a project spans repositories or a monorepo's repository name is the
 container rather than the thing being worked on.
