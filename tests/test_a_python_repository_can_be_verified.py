@@ -32,6 +32,7 @@ name = "a-project"
 
 
 def _a_checkout(*what_it_declares: str, tmp_path: Path) -> str:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     for a_declaration in what_it_declares:
         (tmp_path / a_declaration.split("::", 1)[0]).write_text(
             a_declaration.split("::", 1)[1], encoding="utf-8"
@@ -79,7 +80,7 @@ def test_a_repository_declaring_package_json_is_still_run_with_npm(tmp_path: Pat
     assert how_it_is_tested.suite_command == ("npm", "test")
 
 
-def test_the_four_answers_come_back_together_and_are_one_fact(tmp_path: Path) -> None:
+def test_the_six_answers_come_back_together_and_are_one_fact(tmp_path: Path) -> None:
     """**Why the model exists and not four arguments.**
 
     `pip install -e .` inside `node:22-bookworm` is not a configuration anybody chose — it is
@@ -89,7 +90,55 @@ def test_the_four_answers_come_back_together_and_are_one_fact(tmp_path: Path) ->
     how_it_is_tested = how_this_repository_is_tested("/nowhere/at/all")
 
     assert isinstance(how_it_is_tested, HowThisRepositoryIsTested)
-    assert len(type(how_it_is_tested).model_fields) == 4
+    assert len(type(how_it_is_tested).model_fields) == 6
+
+
+def test_each_toolchain_spells_its_own_cache_flag(tmp_path: Path) -> None:
+    """**A flag belonging to one toolchain cannot be a constant in a function serving three.**
+
+    `--cache` was appended at the call site because npm was the only toolchain this system had.
+    `uv` spells it `--cache-dir` and refuses to start when given the other one — a real install
+    died with `tip: a similar argument exists`, which is a red suite saying nothing about the
+    change under test.
+    """
+    the_uv_checkout = _a_checkout("uv.lock::version = 1", tmp_path=tmp_path / "uv")
+    the_node_checkout = _a_checkout(
+        'package.json::{"name": "a-project"}', tmp_path=tmp_path / "node"
+    )
+
+    the_uv_flag = how_this_repository_is_tested(
+        the_uv_checkout
+    ).the_flag_that_points_a_cache_somewhere_writable
+    the_node_flag = how_this_repository_is_tested(
+        the_node_checkout
+    ).the_flag_that_points_a_cache_somewhere_writable
+
+    assert the_uv_flag == "--cache-dir"
+    assert the_node_flag == "--cache"
+
+
+def test_a_uv_repository_is_installed_with_uv_and_run_with_its_own_environment(
+    tmp_path: Path,
+) -> None:
+    """**And the install lands on the mount, which is the half that makes it survive.**
+
+    `uv sync` writes `.venv` inside the project, which is the one thing the install container and
+    the suite container share. That is exactly what `npm ci` does with `node_modules`, and it is
+    why the node path worked while `pip install -e .` did not: pip wrote to the interpreter, which
+    is thrown away with the container.
+    """
+    the_checkout = _a_checkout("uv.lock::version = 1", tmp_path=tmp_path)
+
+    how_it_is_tested = how_this_repository_is_tested(the_checkout)
+
+    assert how_it_is_tested.installation_command == ("uv", "sync", "--all-extras"), (
+        f"a uv repository was installed with {how_it_is_tested.installation_command!r}, and only "
+        "an install that writes inside the checkout survives into the suite's container"
+    )
+    assert how_it_is_tested.suite_command[:3] == ("uv", "run", "--no-sync"), (
+        f"the suite would be run with {how_it_is_tested.suite_command!r}; without --no-sync it "
+        "would try to reach the network in a container that has none"
+    )
 
 
 def test_pytests_own_collection_listing_is_read_for_the_files_it_named() -> None:

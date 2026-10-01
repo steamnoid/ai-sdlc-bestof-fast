@@ -86,7 +86,21 @@ THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS = ("npx", "vitest", "list", "--run")
 # remembered.** `--collect-only -q` prints one `path::test_name` per collected test, which is more
 # than a file listing and is why `the_test_files_the_suite_reported_running` now reads both.
 THE_SUITE_THAT_A_PYTHON_REPOSITORY_DEFINES = ("python", "-m", "pytest", "-q")
-THE_INSTALL_THAT_FETCHES_A_PYTHON_PACKAGE = ("python", "-m", "pip", "install", "-e", ".")
+# **The runner is installed with the project, because the runner is what the suite invokes.**
+# `pip install -e .` installs the repository's own package and nothing else, so `python -m pytest`
+# then fails with `No module named pytest` — read out of a real container run, not imagined.
+# A repository's test dependencies live in whatever it declares, and a group pip does not read
+# (`[dependency-groups]`, which is a `uv` concept) is invisible to it, so naming the runner
+# explicitly is the one answer that works for an arbitrary repository rather than this one.
+THE_INSTALL_THAT_FETCHES_A_PYTHON_PACKAGE = (
+    "python",
+    "-m",
+    "pip",
+    "install",
+    "-e",
+    ".",
+    "pytest",
+)
 THE_LISTING_THAT_A_PYTHON_RUNNER_UNDERSTANDS = (
     "python",
     "-m",
@@ -95,22 +109,77 @@ THE_LISTING_THAT_A_PYTHON_RUNNER_UNDERSTANDS = (
     "-q",
 )
 THE_PYTHON_WHEN_A_REPOSITORY_DECLARES_NONE = "python:3.13-slim"
+
+# **The uv branch, and the image is the one that has uv in it.** Read out of a real `docker
+# manifest inspect`, not remembered: the tag is the part of this that has to be right, and a
+# repository that cannot be installed because the image name was a guess is a red suite that says
+# nothing about the change.
+# **Not the `-slim` variant, and that is a real run's finding rather than a preference.** Thirteen
+# of this repository's tests build a git repository in a temporary directory, and the slim image
+# has no `git` in it, so all thirteen error with `FileNotFoundError: 'git'`. That is not a smaller
+# suite — it is a suite whose fixtures cannot run, and the report says "13 errors" rather than
+# "the sandbox lacks a tool". Checked with `docker run --rm --network=none <image> command -v git`
+# on both variants; the slim one has no git and the other one does.
+#
+# **`node:22-bookworm` is already the non-slim variant**, which is why the node path never hit
+# this and why the two answers disagreeing would have looked like a uv problem.
+THE_UV_IMAGE_THAT_RUNS_A_REPOSITORYS_OWN_TOOLCHAIN = (
+    "ghcr.io/astral-sh/uv:python3.13-bookworm"
+)
+# `--all-extras` because a repository's own suite lives in its extras and its dev group, which is
+# what "the suite" means for a project that publishes a library and tests the rest.
+THE_INSTALL_THAT_FETCHES_WITH_UV = ("uv", "sync", "--all-extras")
+# `--no-sync` because the suite container must not touch the network, and a sync would.
+THE_SUITE_THAT_A_UV_REPOSITORY_DEFINES = ("uv", "run", "--no-sync", "pytest", "-q")
+THE_LISTING_THAT_A_UV_REPOSITORY_UNDERSTANDS = (
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+)
+
+# **pytest's own "nothing was collected", named.** Exit code 5 means no tests were collected, which
+# is not a failing suite and is not a passing one — it is a suite that never ran, and the first
+# report of a Python repository here said "No module named pytest" as though it were a red suite.
+# `dependencies_installed` already keeps "would not install" apart from "ran and failed"; this is
+# the same idea for the third case.
+PYTEST_SAYS_IT_COLLECTED_NOTHING = 5
+
+# Where the container's `HOME` points, and why it is a constant rather than a setting.
+# S108 is about a *host's* shared temporary directory: this is inside a `--rm` container that
+# has one mount, no credential and no network, and the value names a home rather than opening one.
+WHERE_THE_TOOLCHAIN_MAY_WRITE_ITS_HOME = "/tmp"  # noqa: S108
 A_FROM_LINE_NAMING_A_PYTHON_IMAGE = re.compile(r"^\s*FROM\s+(python:[\w.\-]+)", re.MULTILINE)
 
 
 class HowThisRepositoryIsTested(BaseModel):
     """The four answers that decide how one repository's suite is run, together.
 
-    **One model and not four arguments,** because they are one fact and because they were once
-    three unrelated constants that happened to agree. `pip install -e .` with `node:22-bookworm`
-    is not a configuration anybody chose; it is what you get when each answer has its own default
-    and none of them has an owner.
+    **One model and not five arguments,** because they are one fact and because they were once
+    unrelated constants that happened to agree. `pip install -e .` with `node:22-bookworm` is not
+    a configuration anybody chose; it is what you get when each answer has its own default and none
+    of them has an owner.
+
+    **And the cache flag is one of the answers, which is the fifth one and the reason it is here.**
+    It used to be appended at the call site as a literal `--cache`, because npm was the only
+    toolchain this system had. `uv` spells it `--cache-dir` and **refuses to start** when given
+    the other one — a red install that said `tip: a similar argument exists`, from a real run.
+    A flag belonging to one toolchain cannot be a constant in a function serving three.
+
+    **And neither can the directory.** The path was `/tmp/.npm` for all of them, so `uv` was told
+    to keep its cache in a directory named after another package manager — which works, and is
+    the sort of thing that is still there in three years when somebody greps for what writes to
+    `/tmp`.
     """
 
     toolchain_image: str
     installation_command: tuple[str, ...]
     suite_command: tuple[str, ...]
     listing_command: tuple[str, ...]
+    the_flag_that_points_a_cache_somewhere_writable: str
+    where_its_cache_may_be_written: str
 
 # The marks a runner puts in front of a file it collected: passed, failed, and skipped. As escapes
 # so this file stays ASCII, and three rather than four because a fourth was remembered rather than
@@ -367,6 +436,15 @@ def how_this_repository_is_tested(checkout: str) -> HowThisRepositoryIsTested:
     settings, and asking for them separately is how `node:22-bookworm` came to be paired with
     `npm test` by accident rather than by anybody's decision.
     """
+    if _this_repository_declares_uv(checkout):
+        return HowThisRepositoryIsTested(
+            toolchain_image=THE_UV_IMAGE_THAT_RUNS_A_REPOSITORYS_OWN_TOOLCHAIN,
+            installation_command=THE_INSTALL_THAT_FETCHES_WITH_UV,
+            suite_command=THE_SUITE_THAT_A_UV_REPOSITORY_DEFINES,
+            listing_command=THE_LISTING_THAT_A_UV_REPOSITORY_UNDERSTANDS,
+            the_flag_that_points_a_cache_somewhere_writable="--cache-dir",
+            where_its_cache_may_be_written="/tmp/.uv",  # noqa: S108
+        )
     if _this_repository_declares_python(checkout):
         return HowThisRepositoryIsTested(
             toolchain_image=the_python_a_repository_declares(checkout)
@@ -374,13 +452,39 @@ def how_this_repository_is_tested(checkout: str) -> HowThisRepositoryIsTested:
             installation_command=THE_INSTALL_THAT_FETCHES_A_PYTHON_PACKAGE,
             suite_command=THE_SUITE_THAT_A_PYTHON_REPOSITORY_DEFINES,
             listing_command=THE_LISTING_THAT_A_PYTHON_RUNNER_UNDERSTANDS,
+            the_flag_that_points_a_cache_somewhere_writable="--cache-dir",
+            where_its_cache_may_be_written="/tmp/.pip",  # noqa: S108
         )
     return HowThisRepositoryIsTested(
         toolchain_image=the_toolchain_image_a_repository_declares(checkout),
         installation_command=THE_INSTALL_THAT_FETCHES_PACKAGES,
         suite_command=THE_SUITE_THAT_THIS_REPOSITORY_DEFINES,
         listing_command=THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS,
+        the_flag_that_points_a_cache_somewhere_writable="--cache",
+        where_its_cache_may_be_written="/tmp/.npm",  # noqa: S108
     )
+
+
+def _this_repository_declares_uv(checkout: str) -> bool:
+    """Whether this is a uv repository, by what it declares rather than by what it is called.
+
+    **`uv.lock` or a `[tool.uv]` table, and either is enough.** This repository has both. The
+    check exists because of a fact about pip that is easy to miss until a suite fails to import:
+    **pip does not read `[dependency-groups]`** — that is a `uv` idea — so installing a uv-managed
+    project with pip gets the project and none of its development dependencies. `langchain` is
+    an *extra* here, and pytest lives in the dev group, so the pip branch can install this
+    repository and still be unable to run its suite.
+
+    **And uv is the branch that can persist, which is the other half of it.** `uv sync` writes its
+    environment to `.venv` **inside the project**, on the checkout mount, which is the one thing
+    the install container and the suite container share. That is exactly what `npm ci` does with
+    `node_modules`, and it is why the node path worked and `pip install -e .` did not: pip wrote
+    to the interpreter, which is thrown away with the container.
+    """
+    if Path(checkout, "uv.lock").is_file():
+        return True
+    pyproject = Path(checkout, "pyproject.toml")
+    return pyproject.is_file() and "[tool.uv" in pyproject.read_text(encoding="utf-8")
 
 
 def _this_repository_declares_python(checkout: str) -> bool:
@@ -437,6 +541,16 @@ def _an_invocation_of(
         "--cap-drop=ALL",
         f"--user={the_user}",
         f"--network={network}",
+        # **One environment variable, and it is a constant rather than a parameter.** This
+        # container has never been given any, and the reason was good: an empty map cannot be
+        # filtered wrong, because there is nothing in it to filter. But a toolchain that writes
+        # to `$HOME` cannot run without one — `pip install` reaches for `~/.local` and dies with
+        # `Permission denied: /.local` on an image whose home is `/` and whose user is not root.
+        # A *constant* is the stronger version of the same property: there is no parameter to
+        # pass a credential through, so forgetting to exclude one cannot happen. `/tmp` is the
+        # directory this file already names as the one any uid can create inside a toolchain.
+        "-e",
+        f"HOME={WHERE_THE_TOOLCHAIN_MAY_WRITE_ITS_HOME}",
         f"-v{mounts[WHERE_THE_CHECKOUT_APPEARS_INSIDE]}:{WHERE_THE_CHECKOUT_APPEARS_INSIDE}",
         f"-w{WHERE_THE_CHECKOUT_APPEARS_INSIDE}",
         toolchain_image,
@@ -466,8 +580,8 @@ def a_suite_to_run(repository: Repository, checkout: str) -> ASuiteToRun:
             toolchain_image,
             (
                 *how_it_is_tested.installation_command,
-                "--cache",
-                WHERE_THE_TOOLCHAIN_MAY_WRITE_ITS_CACHE,
+                how_it_is_tested.the_flag_that_points_a_cache_somewhere_writable,
+                how_it_is_tested.where_its_cache_may_be_written,
             ),
             mounts,
             "bridge",

@@ -483,6 +483,29 @@ out of four. All four are now `HowThisRepositoryIsTested`, read together, becaus
 inside `node:22-bookworm` is not a configuration anybody chose; it is what you get when each answer
 has its own default and none of them has an owner.
 
+**The suite then had to be able to run in that container, and the reason it could not is the
+shape of the mount.** The container gets exactly one: the checkout. `npm ci` survives into the
+suite's container because `node_modules` lands **inside the repository**, on the mount. `pip
+install -e .` does not — it writes to the interpreter's site-packages, which is thrown away with
+the container, so the install exited 0 and the suite still said `No module named pytest`.
+
+**`uv` gives this away for free.** `uv sync` writes `.venv` inside the project, on the mount,
+exactly like `node_modules` — and `.venv/` was already in `.gitignore`. It also reads
+`[dependency-groups]`, which **pip does not**, so `langchain` (an extra) and `pytest` (the dev
+group) were never installed by the pip branch at all. That is the third declared toolchain, chosen
+by what the repository declares.
+
+**Three things the real run found, none of which were visible from the host:**
+
+| | |
+|---|---|
+| `uv` spells its cache flag `--cache-dir` | `--cache` was appended at the call site because npm was the only toolchain, and `uv` **refuses to start**: `tip: a similar argument exists` |
+| the `-slim` image has no `git` | 13 tests build a git repository in a fixture, so all 13 errored — not a smaller suite, a suite whose fixtures cannot run. `node:22-bookworm` is already non-slim, which is why the node path never hit this |
+| every toolchain was handed `/tmp/.npm` | `uv` was told to keep its cache in a directory named after another package manager. It works, and it is the sort of thing still there in three years |
+
+**The suite now runs here, in a container, green:** `76 passed, 3 skipped` on
+`ghcr.io/astral-sh/uv:python3.13-bookworm`, one mount, `--network=none`, no credential.
+
 **And the duplicate rule refused a real issue the day it was written.** It asked to teach
 `shell.run_tests` a Python repository; the copy already had an open issue about the trust boundary
 of `shell.run_command`. Different files, different problems — and the rule fired anyway, because
