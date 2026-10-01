@@ -544,6 +544,30 @@ wiring rather than architecture:
 | the analysis stages' inspection did not carry the files the requirements were about | the file-contents fix was made for **discovery** and never checked for the stages after it |
 | the implementer wrote some of the plan's files | `AnUnrunTestError` and `AWriteThatChangesNothingError` fired as designed; the run refused rather than delivering half a plan |
 
+**Two more runs after that, and each one advanced exactly one gate.**
+
+**Run three** had the requirements **approved** — the inspection fix worked — and was refused at
+the QA plan, which asked for two decisions to be recorded before the tests could be written: how
+the runner learns the project root, and whether the network flags belong in the change.
+
+**Run four** stated both, and got **seven gates in, every one approved, including the
+implementation plan**. The implementer wrote `run_command.py` and two new test files. The container
+verified them and came back with:
+
+```
+2 failed, 111 passed, 3 skipped
+```
+
+**And that is the closest this has come to a pull request: 111 passing is up from the 77 the
+repository started the run with, and the two failures are in a file the run itself wrote** —
+`tests/test_tool_clone_path_propagation.py::test_the_two_runners_are_given_the_same_directory`.
+So the system proposed a property, wrote a test for it, found it does not hold, and refused to
+deliver. **The policy refused the verification and no pull request was opened.**
+
+That last one is worth being precise about, because it is the whole thesis in one run: **a run
+that has already written the code is still not a delivery until the suite agrees**, and the suite
+here said no.
+
 **And the duplicate rule refused a real issue the day it was written.** It asked to teach
 `shell.run_tests` a Python repository; the copy already had an open issue about the trust boundary
 of `shell.run_command`. Different files, different problems — and the rule fired anyway, because
