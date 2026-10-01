@@ -32,7 +32,20 @@ import httpx
 from aisdlc.domain.repository import Repository
 
 THE_SETTING_NAMING_THE_PROJECT = "AISDLC_PROJECT_NAME"
-"""The setting a deployment uses to name the project, when the repository name is not it."""
+"""The setting a deployment uses to name the project that files, when it is not this one."""
+
+THE_PROJECT_THIS_SYSTEM_FILES_AS = "steamnoid/ai-sdlc-bestof-fast"
+"""The full name of the project this system files as — itself, and never a repository it files into.
+
+**Here rather than read from a repository, because that was the mistake.** The first version
+derived the tag from the repository being filed into, so every issue this system filed on
+`paligakrzychu/wellbeing-tracker-public` was labelled `paligakrzychu/wellbeing-tracker-public`:
+the project it landed on, named as though it had asked for the work. A tag exists to answer *who
+filed this*, and that answer is a fact about this codebase — the one thing that cannot be read off
+a repository somebody else owns.
+
+`AISDLC_PROJECT_NAME` overrides it, which is what a deployment that forks this and files as
+something else states."""
 
 WHERE_A_LABEL_IS_CREATED = "/repos/{owner}/{name}/labels"
 """Where GitHub creates a label on a repository, and where it refuses to create one twice."""
@@ -46,26 +59,32 @@ GITHUB_SAYS_IT_ALREADY_EXISTS = 422
 THE_COLOUR_A_FILING_LABEL_IS = "ededed"
 
 
-def the_tag_this_system_leaves(repository: Repository) -> str:
-    """The label an issue or a pull request about this repository is filed under.
+def the_tag_this_system_leaves() -> str:
+    """The label everything this system files carries: **this system's own project.**
 
-    **The full name — owner and name together — and not the name on its own.** A repository name
-    is only unique within an owner, and a tag that cannot tell two repositories apart cannot answer
-    the one question it is filed under: *which project asked for this?* Two forks of the same
-    project share a name, `wellbeing-tracker-public` is a plausible thing for more than one person
-    to own, and a bare name filed by both would put their work under one label and make the filter
-    lie. `owner/name` is also what GitHub itself calls a repository's full name, so the tag and
-    the thing it names are the same string as the one a reader would type.
+    **Its own, and not the repository being filed into.** This took six attempts to get right and
+    the wrong version was not a bug so much as a misreading. It returned
+    `repository.address` — the repository a run was filing *into* — which meant a briefing on
+    somebody else's project labelled every issue it filed with *their* name. That is worse than no
+    label at all: a tag is how a reader answers **who produced this**, and the answer it gave was
+    a fact about where the work landed rather than about who asked for it. Two automations filing
+    into one repository would have been indistinguishable, and a person filtering a stranger's
+    issue queue by project would have been reading a label that said nothing about the tool that
+    wrote it.
 
-    **Blank falls back rather than raising**, because a deployment that empties a setting to turn a
-    name off should get the repository's full name instead of an exception from inside an HTTP
-    call — and `GITHUB_TOKEN=` present-but-empty is already handled that way in this repository,
-    so a deployment that learned that lesson here learns it twice.
+    **So the function takes no repository at all.** Taking one is what invited the mistake: the
+    argument was there, it was the only name in scope, and it was the wrong name. An argument
+    nobody needs is an argument that will be used wrongly.
+
+    **The full name of the project that files, and it is a constant rather than a lookup.** A
+    deployment that forks this and files as something else states `AISDLC_PROJECT_NAME`; the
+    default is the repository this code is released from, which is the honest answer for an
+    installation that has said nothing.
     """
     what_the_deployment_stated = os.environ.get(THE_SETTING_NAMING_THE_PROJECT, "")
     if what_the_deployment_stated.strip():
         return what_the_deployment_stated.strip()
-    return repository.address
+    return THE_PROJECT_THIS_SYSTEM_FILES_AS
 
 
 def make_sure_the_tag_is_there(

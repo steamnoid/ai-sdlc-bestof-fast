@@ -82,7 +82,7 @@ def test_an_issue_filed_for_real_carries_the_projects_full_name() -> None:
         name=_the_repository_to_file_against().split("/")[1],
     )
     the_client = a_github_client()
-    the_tag = the_tag_this_system_leaves(the_repository)
+    the_tag = the_tag_this_system_leaves()
 
     opened = open_an_issue(
         AnIssueToOpen(
@@ -215,7 +215,7 @@ def test_a_pull_request_opened_for_real_carries_the_projects_full_name() -> None
     )
     the_client = a_github_client()
     the_headers = {"Authorization": f"Bearer {the_credential()}"}
-    the_tag = the_tag_this_system_leaves(the_repository)
+    the_tag = the_tag_this_system_leaves()
     the_branch = "proof-the-tag-reaches-a-pull-request"
 
     # **Inside the `try`, and that is the fix for a branch left on somebody's remote.** The first

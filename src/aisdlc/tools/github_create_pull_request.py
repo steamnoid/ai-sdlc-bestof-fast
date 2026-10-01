@@ -103,7 +103,7 @@ def open_a_pull_request(
             "nobody cannot ask for one."
         )
 
-    the_tag = the_tag_this_system_leaves(wanted.repository)
+    the_tag = the_tag_this_system_leaves()
     the_labels = (
         [the_tag]
         if make_sure_the_tag_is_there(client, credential, wanted.repository, the_tag)
