@@ -37,7 +37,7 @@ from aisdlc.agents.architecture_report import ArchitectureReport
 from aisdlc.agents.architecture_report_answer import ArchitectureReportAnswer
 from aisdlc.agents.discovery_answer import DiscoveryAnswer
 from aisdlc.agents.discovery_report import DiscoveryReport, EvidenceFile
-from aisdlc.agents.implement_the_plan import FileToWrite
+from aisdlc.agents.implement_the_plan import AWriteThatChangesNothingError, FileToWrite
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.agents.qa_plan import QaPlan
 from aisdlc.agents.qa_plan_answer import QaPlanAnswer
@@ -673,220 +673,127 @@ def _wait_until(what_to_read, what_to_say_when_it_never_became_true: str):
     pytest.fail(
         f"{what_to_say_when_it_never_became_true}, after {HOW_LONG_A_SMOKE_MAY_WAIT_IN_SECONDS}s"
     )
-def test_a_refusal_inside_a_whole_run_reaches_the_supervisor_and_the_run_finishes(
+def test_an_implementer_that_wrote_nothing_is_sent_back_and_the_run_delivers(
     a_repository_to_clone_into: Path, a_register_and_a_projects_root, tmp_path: Path
 ) -> None:
-    """The claim the last three real runs could not make, made on a run that goes all the way.
+    """The claim twelve isolated tests could not make, made on a run that goes all the way.
 
     **Why this is here and not another isolated supervisor test.** Every refusal routing in this
-    repository is currently covered by calling `apply_and_verify_in_this_run` directly and reading
-    the `Command` it returns. That proves the `except` names the refusal. It cannot prove the
-    graph has a node on the other end of that `goto`, that the state the supervisor reads is
-    populated, that the stage it names is reachable from where the run actually is, and that a
-    run survives going there and coming back. Those are four claims, none of which is visible in
-    a returned `Command`, and a run that refused in a real pipeline died at the delivery gate
-    rather than at a refusal — so the difference between "routed" and "survivable" has never
-    been observed at all.
+    repository is covered by calling the node and reading the `Command` it returns. That proves the
+    `except` names the refusal. It cannot prove the graph has a node on the other end of that
+    `goto`, that the state the supervisor reads is populated, that the stage it names is reachable
+    from where the run actually is, and that a run survives going there and coming back. Those are
+    four claims and none is visible in a returned `Command`.
 
-    **The implementer refuses once and then works, and the run still delivers.** Refusing
-    forever would prove the route exists and nothing else: the second refusal is where a broken
-    graph shows up, as a ceiling raised or a run that quietly ends, and a repair that cannot
-    complete is a different claim from a repair that can.
+    **And the wiring was broken in a way none of them could see.** This node returned a `Command`
+    on a refusal *and* the graph carried a static edge out of it, so both fired: the run went to
+    the supervisor and carried on down the ordinary path, both arrived at the same node in the same
+    step, and LangGraph refused the run for writing `requested_stage` twice. Every repair in this
+    system died that way, and a test that reads a `Command` reads nothing about it.
 
-    **The supervisor is a recording stub, so the decision is the test's and not a model's.** What
-    is under test is the wiring between a refusal and a stage, which is production code; who
-    decides to retry is a judgement, and twelve tests already cover that judgement with a real
-    model in the loop. A model here would make a deterministic claim depend on a provider.
+    **The implementer refuses once and then works, and the run still delivers.** Refusing forever
+    would prove the route exists and nothing else — the second attempt is where a half-fixed graph
+    shows up.
+
+    **Walked by driving the graph, not the board**, because the board's question lifecycle makes a
+    repairing run indistinguishable from a polling race. See `_walk_the_run_to_the_end`.
     """
-    from langgraph.types import Command
-
-    from aisdlc.agents.implement_the_plan import AWriteThatChangesNothingError
-    from aisdlc.application.the_runs_this_process_is_holding import TheRunsThisProcessIsHolding
-    from aisdlc.domain.repository import Repository as ARepository
-    from aisdlc.graph.supervise_a_repair import WHERE_THE_IMPLEMENTATION_IS_REWRITTEN
-
-    the_register, the_projects_root = a_register_and_a_projects_root
-    os.environ["AISDLC_PROJECTS_DIR"] = str(the_projects_root)
-
     what_the_supervisor_was_told: list[str] = []
-    how_many_times_the_implementer_refused = {"count": 0}
-    a_suite_that_passed = SuiteOutcome(
-        exit_code=0, passed=True, dependencies_installed=True, output="1 passed"
+    how_many_times_the_implementer_was_asked = {"count": 0}
+    a_green_suite = SuiteOutcome(
+        exit_code=0, passed=True, dependencies_installed=True, output="74 passed"
     )
 
-    def an_implementer_that_refuses_once(
-        clone, repository, implementation_plan
-    ) -> ADeliveredChange:
+    def an_implementer_that_refuses_once(clone, repository, implementation_plan):
         """The real refusal, once, on a plan it agrees with entirely.
 
-        **It agrees with the plan, which is what makes this the right refusal to inject.** The
-        two refusals a real run produced were both "the plan named the file and the work did not
-        match it", and a supervisor asked to judge a stage that disagrees with an approved plan
-        has one obvious answer. So this is the honest shape: a refusal about the implementer's own
-        work, on a plan nobody disputes.
+        **It agrees with the plan, which is what makes this the right refusal to inject.** A
+        refusal of "the plan named the file and the work did not match it" has one obvious answer,
+        so a supervisor asked to judge it is being asked a question with only one sensible reply.
         """
-        how_many_times_the_implementer_refused["count"] += 1
-        if how_many_times_the_implementer_refused["count"] == 1:
+        how_many_times_the_implementer_was_asked["count"] += 1
+        if how_many_times_the_implementer_was_asked["count"] == 1:
             raise AWriteThatChangesNothingError(["health.py"])
         return ADeliveredChange(
-            written=[
-                FileToWrite(
-                    path="health.py", content="def health():\n    return {'ok': True}\n"
-                )
-            ],
+            written=[FileToWrite(path="health.py", content="def health():\n    return 1\n")],
             verification=VerificationReport(
-                suite_before_the_change=a_suite_that_passed,
-                suite_after_the_change=a_suite_that_passed,
+                suite_before_the_change=a_green_suite,
+                suite_after_the_change=a_green_suite,
             ),
             what_the_implementer_said="added the endpoint the requirements asked for, on retry",
         )
 
-    def a_supervisor_that_says_try_the_implementer_again(
+    def a_supervisor_that_says_do_the_implementation_again(
         work_item, projects_root, what_the_run_stopped_on
     ) -> Command:
-        """The production signature, all three arguments the graph passes.
-
-        **The first version of this stub took one argument and the run died with a `TypeError`
-        rather than a decision.** The supervisor is called with the work item, the projects root
-        and the refusal, and the model is closed over by the graph. A stub with the wrong arity
-        fails as a plumbing error, which is the one kind of failure that tells a reader nothing
-        about the thing being tested — and it is invisible until a run actually refuses, because
-        nothing else calls this.
-        """
         what_the_supervisor_was_told.append(str(what_the_run_stopped_on))
         return Command(
             goto=WHERE_THE_IMPLEMENTATION_IS_REWRITTEN,
-            # **The channel the production supervisor writes, and not one invented for this
-            # test.** A `goto` is not enough: the run's state carries the decision, and a stub
-            # that updates a key of its own leaves the run in a state no reader of the code has
-            # seen. And it is `offer_the_work_item_to_the_implementer` — the pickup rather than
-            # the writing, so a repair goes back to being *offered* the work rather than to a
-            # node that assumes somebody is already holding it.
             update={"repair": "the implementer ignored an approved plan nobody disputes"},
         )
 
-    def the_agents_with_one_bad_attempt() -> TheAgentsThisRun:
-        the_working = _the_agents_no_model_would_produce()
-        return TheAgentsThisRun(
+    working_agents = _the_agents_no_model_would_produce()
+    the_graph = the_lifecycle(
+        agents=TheAgentsThisRun(
             **{
-                **the_working.__dict__,
+                **working_agents.__dict__,
                 "apply_and_verify": an_implementer_that_refuses_once,
-                "supervise": a_supervisor_that_says_try_the_implementer_again,
+                "supervise": a_supervisor_that_says_do_the_implementation_again,
             }
-        )
+        ),
+        delivery=_a_delivery_that_only_writes_down(a_repository_to_clone_into),
+        plan_the_clone=_cloning_from_a_local_repository(a_repository_to_clone_into),
+    )
 
-    def building_the_graph(source: ARepository, the_model: object = None) -> object:
-        return the_lifecycle(
-            agents=the_agents_with_one_bad_attempt(),
-            delivery=_a_delivery_that_only_writes_down(a_repository_to_clone_into),
-            plan_the_clone=_cloning_from_a_local_repository(a_repository_to_clone_into),
-        )
+    the_work_item = a_work_item_commissioned_for_an_agent(
+        work_item_id="an-implementer-that-wrote-nothing",
+        repository=Repository(owner="an", name="owner"),
+        accountable_role=Role.DEV,
+        commissioned_by="a person reading a test",
+        requested=a_request_about("add a health endpoint", ""),
+    )
+    with holding_the_register() as register:
+        the_work_item_a_commission_registers(register, the_work_item)
 
-    the_runs = TheRunsThisProcessIsHolding(build_the_graph=building_the_graph)
-    with TestClient(the_api_over(_the_open_register(), the_runs)) as the_board:
-        started = the_board.post(
-            "/api/runs",
-            json={
-                "repository_owner": "an",
-                "repository_name": "owner",
-                "asked_for": "add a health endpoint",
-            },
-        )
-        the_work_item_id = started.json()["work_item_id"]
+    _, the_projects_root = a_register_and_a_projects_root
+    the_gates_it_asked_about: list[str] = []
+    _walk_the_run_to_the_end(
+        the_graph, the_work_item, the_projects_root, the_gates_it_asked_about
+    )
 
-        # The set of gates this test has answered, tracked by this test rather than read from
-        # the record — the same reason the delivered test does it, and for the same reason.
-        # **A repairing run is asked about some gates twice, so this answers whatever it is asked
-        # rather than counting to eight.** The other tests in this file answer
-        # `_how_many_gates_there_are()` of them, which is right for a run that visits each gate
-        # once. This one repairs, and the repair re-presents the verification: a person approved
-        # it *for a change*, and the run has since found out that change did not happen, so it
-        # asks again rather than delivering on an approval of something that is not there. That
-        # is the correct behaviour and it is invisible to a counting loop.
-        #
-        # **The bound is a backstop, not the number of gates.** It exists so a run that asks
-        # forever fails rather than hangs, and it is far above eight because repeating is the
-        # whole point of this test.
-        # **Answer what the run asks until it stops, and prove we saw every gate before
-        # believing it has stopped.** A run being finished *is* its having no question — that is
-        # what `_wait_until_the_run_has_finished` reads, and `how_it_ended` is never set on a run
-        # the board considers finished, so it is not the signal. But "no question" is also what
-        # a run looks like for the instant between two gates, which is the very race
-        # `_wait_until_the_gate_is_asking` was written to close. So the loop stops on the absence
-        # of a question *and* on having seen every gate in the router, which cannot both be true
-        # **The established pattern from the other tests here, and it turns out to be right for a
-        # run that repairs.** A repairing run does *not* re-present a gate. The refusal happens at
-        # the implementer, before the verification has been written, so the repair re-does the
-        # implementation and the verification gate is presented once, like every other gate.
-        # Every question a loop reads twice here is the race `_wait_until_the_gate_is_asking`
-        # exists to close — and answering that second reading is not harmless: the run ended with
-        # all eight gates approved and had never delivered anything.
-        #
-        # Three attempts got this wrong first, and all three looked like patience rather than the
-        # wrong question: answer whatever appears (delivers nothing), count sixteen (asks *how
-        # many* instead of *why*), and report "finished" by returning `None`, which `_wait_until`
-        # reads as "not yet" and which spent thirty seconds waiting for a ninth question that the
-        # eighth had already delivered.
-        the_gates_seen: set[str] = set()
-        already_answered: set[str] = set()
-        for _gate in range(1, _how_many_gates_there_are() + 1):
-            this_gate = _wait_until_the_gate_is_asking(
-                the_board, the_work_item_id, already_answered
-            )
-            already_answered.add(this_gate["artifact_id"])
-            the_gates_seen.add(str(this_gate["artifact_id"]))
-            the_board.post(
-                f"/api/runs/{the_work_item_id}/decisions",
-                json={
-                    "approved": True,
-                    "decided_by": "a person reading a test",
-                    "reason": "it is right",
-                },
-            )
-        _wait_until_the_run_has_finished(the_board, the_work_item_id)
-
+    with holding_the_register() as register:
         the_stage_the_register_holds = the_work_item_registered_at(
-            the_register, the_work_item_id
+            register, the_work_item.work_item_id
         ).stage
 
-        assert len(the_gates_seen) == _how_many_gates_there_are(), (
-            f"this run answered {sorted(the_gates_seen)} and the router has "
-            f"{_how_many_gates_there_are()} artifacts, so a run stopped asking before it had been "
-            "shown the whole pipeline — which is a run that ended early, not a test that finished"
-        )
-        # **The register, and not the card — for the reason the delivered test gives.**
-        # `how_it_ended` is `None` on a run that delivered, which is the opposite of what its
-        # name suggests and cost this test an assertion before it read the field.
-        assert the_stage_the_register_holds is Stage.DONE, (
-            "every gate was approved, the run stopped asking, and the register does not have it "
-            f"at DONE but at {the_stage_the_register_holds.name} — so this run delivered and never "
-            "marked itself delivered, which is the failure this store exists to prevent"
-        )
-
-    # **`how_it_ended` is `None` on a run that delivered**, which is the opposite of what the
-    # name suggests and cost this test an assertion before it read the field. What says the run
-    # finished is that it stopped asking and that every gate in the router was seen — both
-    # asserted above.
-
-    # **Not asserted here: that the register holds `DONE`.** A run that does not repair reaches
-    # `DONE`, and this one does not, and that difference is real and unexplained. It is written
-    # down in the README as an open question rather than asserted here as though it were correct,
-    # because "the repairing run leaves the register behind" may be a defect in the delivery
-    # transition or an artefact of this test double, and the first version of a test that picks
-    # one of those without knowing is a test that stops the question being asked.
-    assert how_many_times_the_implementer_refused["count"] == 2, (
-        f"the implementer was called "
-        f"{how_many_times_the_implementer_refused['count']} times, so the run did not go back to "
-        "it after the refusal — and a supervisor that names a stage is a claim that the graph can "
-        "get there from where the run actually was"
+    assert how_many_times_the_implementer_was_asked["count"] == 2, (
+        f"the implementer was asked {how_many_times_the_implementer_was_asked['count']} times, so "
+        "the refusal did not send the run back to it — and a supervisor that names a stage is a "
+        "claim that the graph can get there from where the run actually was"
     )
     assert len(what_the_supervisor_was_told) == 1, (
-        f"the supervisor was asked {len(what_the_supervisor_was_told)} times, so the refusal "
-        "reached it once for the one stage that refused"
+        f"the supervisor was asked {len(what_the_supervisor_was_told)} times for one refusal"
     )
     assert "health.py" in what_the_supervisor_was_told[0], (
-        "the supervisor was told a run stopped but not which file was left alone, so it is being "
-        "asked to judge without the one fact the refusal exists to carry"
+        "the supervisor was told a run stopped but not which file was left alone, so it is asked "
+        "to judge without the one fact the refusal exists to carry"
+    )
+    # **No gate is asked twice here, and that is the difference from the delivery's refusal.** This
+    # one happens *before* a verification exists, so the repair re-does the implementation and the
+    # verification gate is presented once like every other. A refusal from the delivery is after
+    # that gate, so repairing it re-presents it. Two repairs, two shapes — and it is why both tests
+    # exist rather than one parameterised over a refusal.
+    assert sorted(set(the_gates_it_asked_about)) == sorted(WHERE_AN_APPROVED_ARTIFACT_LEADS), (
+        f"this run was asked about {sorted(set(the_gates_it_asked_about))} and the router has "
+        f"{sorted(WHERE_AN_APPROVED_ARTIFACT_LEADS)}"
+    )
+    assert len(the_gates_it_asked_about) == len(WHERE_AN_APPROVED_ARTIFACT_LEADS), (
+        f"this run was asked {len(the_gates_it_asked_about)} questions for "
+        f"{len(set(the_gates_it_asked_about))} gates: {the_gates_it_asked_about}"
+    )
+    assert the_stage_the_register_holds is Stage.DONE, (
+        "the repair worked and every gate was approved, and the register has this run at "
+        f"{the_stage_the_register_holds.name} rather than DONE"
     )
 
 
