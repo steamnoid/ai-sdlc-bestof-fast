@@ -350,6 +350,17 @@ reasoning to diagnose. A 422 to the *creation* is success, because a label that 
 exactly what GitHub says when it refuses to create one — which is what makes filing several issues
 against one repository work at all.
 
+**A pull request is labelled *after* it is opened, and that is not a style choice.** GitHub's
+create-pull-request endpoint does not take `labels`. It does not reject the field and it does not
+warn: it answers **201**, opens the pull request, and discards the labels. A pull request *is* an
+issue in GitHub's data model, which is exactly why labels work on one and silently do nothing on
+the other. **Every pull request this system opened for a week arrived untagged while all eleven
+assertions about it passed**, because every one of them was about the request rather than about the
+pull request. The label now goes on through `POST /repos/{owner}/{name}/issues/{number}/labels`,
+which is where GitHub keeps a pull request's labels at all — and this is written down beside the
+code that was wrong, because the test that found it is the whole argument for testing a thing
+against the thing it talks to.
+
 **It costs one write per delivery, and after the first that write is refused.** A deployment running
 ten deliveries against one repository makes ten label requests and GitHub answers nine with 422.
 Caching it would avoid those, and would also mean a label deleted halfway through a run's life is
@@ -369,7 +380,8 @@ goes out, untagged. The tag is how a person finds the work; the pull request is 
 own record of it, asserts the label is on the thing rather than in the request, and closes it
 again. It skips loudly unless a deployment states both `GITHUB_TOKEN` and
 `AISDLC_THE_REPOSITORY_TO_FILE_AGAINST`, because a test that files into a repository nobody named
-writes to a stranger's board.
+writes to a stranger's board. **It is what found the pull-request bug above**, by opening a real
+pull request and reading GitHub's record of it rather than its answer.
 
 Set `AISDLC_PROJECT_NAME` when a project spans repositories or a monorepo's repository name is the
 container rather than the thing being worked on.
@@ -505,7 +517,7 @@ Stated rather than left to be discovered.
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
   | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
-  | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it |
+  | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a
