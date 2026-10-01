@@ -28,7 +28,7 @@ from aisdlc.llm.correction_budget import (
 from aisdlc.llm.llm_configuration import a_configuration_from_the_environment
 from aisdlc.llm.model_factory import a_model_for
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.inspect_the_repository import an_inspection_of
+from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 THE_FIELDS_THE_ANSWER_MAY_NAME = (
     "findings",
@@ -106,7 +106,7 @@ def analyze_the_architecture(
     inspection can support, and the refusal is what tells it to say less. A run that
     exhausts the budget raises the last refusal, which is the thing worth showing a person.
     """
-    inspection = an_inspection_of(clone)
+    inspection = an_inspection_of_the_code(clone)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()

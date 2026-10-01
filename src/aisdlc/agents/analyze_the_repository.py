@@ -34,7 +34,7 @@ from aisdlc.llm.correction_budget import (
 from aisdlc.llm.llm_configuration import a_configuration_from_the_environment
 from aisdlc.llm.model_factory import a_model_for
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.inspect_the_repository import an_inspection_of
+from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 THE_FIELDS_THE_ANSWER_MAY_NAME = (
     "requirements",
@@ -160,7 +160,7 @@ def analyze_the_repository(
     chance to say less. One correction is spent on telling it exactly that, and the run
     raises the refusal rather than returning a proposal nobody can approve.
     """
-    inspection = an_inspection_of(clone)
+    inspection = an_inspection_of_the_code(clone)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()

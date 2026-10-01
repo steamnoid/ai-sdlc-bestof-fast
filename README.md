@@ -520,7 +520,10 @@ different hat:
 > undetermined.
 
 **So the same file contents were missing from a second stage's inspection.** It was fixed for
-discovery; the analysis stages were not checked. **A model wrote requirements about two files
+discovery; the analysis stages were not checked. Both are now `an_inspection_of_the_code`, and a
+test reads every stage's source by parsing it and refuses any that is handed the shape instead —
+because **a guard that can be satisfied by a comment is the third of those this repository has
+had**, and the first two were written by me. **A model wrote requirements about two files
 nobody had read**, and a policy caught it by comparing what the artifact said it had seen against
 what it then asserted. That is the loop working: the refusal is the system defending itself.
 
@@ -665,7 +668,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships eleven test files, and each one is a claim
+  end-to-end tests were not copied. This repository ships twelve test files, and each one is a claim
   rather than a category:
 
   | file | what it holds this repository to |
@@ -683,6 +686,7 @@ Stated rather than left to be discovered.
   | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
   | `test_a_python_repository_can_be_verified.py` | that a Python repository's suite is run with pip and pytest rather than npm, and that its collection listing is read |
+  | `test_every_stage_that_reasons_about_files_is_shown_them.py` | that no stage is handed a directory listing and then writes findings about files nobody in it has read |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a
