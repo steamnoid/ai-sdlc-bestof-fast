@@ -807,13 +807,12 @@ def test_every_refusal_the_change_can_raise_is_routed_somewhere() -> None:
     on either side is seen as what it is.
     """
     import ast
-    import re
 
     the_modules_that_can_refuse = [
         Path(verify_the_change.__file__),
         Path(implement_the_plan.__file__),
     ]
-    routed_text = Path(apply_node.__file__).read_text()
+    routed = _the_refusals_this_node_hands_on()
     every_refusal: set[str] = set()
     for a_module in the_modules_that_can_refuse:
         the_classes = ast.parse(a_module.read_text()).body
@@ -829,15 +828,18 @@ def test_every_refusal_the_change_can_raise_is_routed_somewhere() -> None:
                 continue
             every_refusal.add(a_class.name)
 
+    assert routed, (
+        "no refusal was found on the routing side, so this test is reading nothing and would "
+        "report every refusal as unrouted — or worse, pass because the set happened to be empty"
+    )
+
     assert every_refusal, (
         "no refusal was found in either module, so this test is not reading the code it claims to "
         "read and would pass forever"
     )
 
     unrouted = {
-        a_refusal
-        for a_refusal in sorted(every_refusal)
-        if not re.search(rf"\b{re.escape(a_refusal)}\b", routed_text)
+        a_refusal for a_refusal in sorted(every_refusal) if a_refusal not in routed
     }
     assert not unrouted, (
         f"{', '.join(unrouted)} can stop a run and nothing hands it to the supervisor. It is a "
@@ -902,3 +904,36 @@ def test_no_node_that_chooses_its_own_destination_still_carries_an_edge() -> Non
         "a third node joined this shape and this list has not been updated, so the check now "
         "covers two of the places the defect can sit"
     )
+
+
+def _the_refusals_this_node_hands_on() -> set[str]:
+    """The refusal names this node actually catches, read from its `except` clause and not its text.
+
+    **The first version of this searched `apply_node`'s source for the names and passed — and the
+    pass was worth nothing, because the file is mostly prose about refusals.** A name in a comment
+    satisfies a regex over the source exactly as well as a name in an `except` clause, and the
+    comments in that file name all three refusals while explaining why each one is repairable. So
+    the check could not have failed for the reason it exists, which is the worst property a guard
+    can have: it looks armed and is not.
+
+    So it parses. The `except` clause is read as what it is — the tuple of names the node catches —
+    and anything in a docstring is ignored, which is the whole point.
+    """
+    import ast
+
+    the_node = ast.parse(Path(apply_node.__file__).read_text())
+    the_names: set[str] = set()
+    for a_statement in ast.walk(the_node):
+        if not isinstance(a_statement, ast.Try):
+            continue
+        for a_handler in a_statement.handlers:
+            if a_handler.type is None:
+                # A bare `except:` catches everything, which is the thing this whole test is
+                # about. Recorded as a name that catches nothing in particular, so the assertion
+                # below has something true to say about it.
+                the_names.add("except:")
+                continue
+            for a_named in ast.walk(a_handler.type):
+                if isinstance(a_named, ast.Name):
+                    the_names.add(a_named.id)
+    return the_names
