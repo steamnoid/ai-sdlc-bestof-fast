@@ -620,6 +620,50 @@ is not to argue with the gate. A test belongs in a file named after the rule it 
 the same convention every other test in this repository already follows and the one thing the
 operator's shortcut had quietly broken.
 
+**Run nine** is the first run to write, commit and verify a real change:
+
+```text
+f7c8d0f src/aisdlc/tools/run_command.py — 3 file(s) the approved plan named
+ src/aisdlc/tools/run_command.py                  | 150 ++++++--
+ tests/test_the_trust_boundary_of_run_command.py | 302 ++++++++++++++++++++
+ 3 files changed, 503 insertions(+), 35 deletions(-)
+```
+
+Seven gates, the plan approved, and the container suite came back **91 passed, 1 failed**. The
+gate refused, and named the failure exactly: three `cwd` values were handed to the OS across two
+`the_outcome_of` calls instead of two, so the two runners were not receiving the same resolved
+string.
+
+**It was the test double, and the code was right.** `subprocess.run` is implemented in terms of
+`subprocess.Popen`, so a test that patches **both** records every unwatched call twice and every
+watched call once — two calls, three values. Checked against the interpreter rather than believed:
+
+```text
+one subprocess.run call produced 1 Popen construction(s)
+```
+
+A double that double-counts is a double that lies, and it bought the most expensive false failure
+in this whole exercise: a working 503-insertion change stopped from being delivered by a counting
+artefact. **Patching `Popen` alone reaches both runners**, so one seam is enough.
+
+**Run ten**, told that, was refused at the requirements — and this is the best catch any gate has
+made here:
+
+> requirement 5 does not state what `may_run_only_inside=None` must do… the ambiguities list
+> records that same fail-open/fail-closed question as undetermined by a person, so **the one
+> decision a trust boundary turns on would be settled by the implementer and then confirmed by the
+> implementer's own test.**
+
+That is *an agent approving its own output is forbidden* arriving in a shape nobody had named: a
+test written by the implementer cannot be the authority on the behaviour it tests. The operator's
+instruction had left `None` unspecified, so the gate refused rather than let a model settle it
+twice. **A gate that argues with the operator is working; one that agrees because the operator
+phrased it agreeably is not.**
+
+The four decisions are now stated before the run starts: `None` permits any directory because no
+checkout was named, a breach raises a named error rather than returning an outcome, the root
+arrives as an argument and never from the environment, and the resolved directory is compared as
+the resolver returned it.
 **The gate also asked for something the request never did**, and it is worth keeping: the plan
 never stated *which boundary is being enforced, what input is untrusted, or what the check
 rejects*. A plan that adds a trust check without saying what it trusts is thin, and a name being
