@@ -1141,3 +1141,39 @@ def _a_plan_naming_a_test_by_node_id() -> ImplementationPlan:
 def _a_file_written_to(path: str) -> FileToWrite:
     """One file the implementer said it wrote, at the path a file lives at."""
     return FileToWrite(path=path, content="the contents\n")
+
+
+def test_a_commit_stages_a_file_rather_than_a_test_named_by_node_id() -> None:
+    """A real run verified a change and then could not commit it, because git wants a path.
+
+    **Eleven runs in, and this is the closest.** The change was written, the container suite ran
+    on both sides, and then:
+
+        TheChangeWasNotCommittedError: git add refused … fatal: pathspec
+        'tests/test_the_trust_boundary_of_run_command.py::test_may_run_only_inside_none_runs_
+        in_the_given_directory' did not match any files
+
+    A pytest node ID names a test exactly and is what the verifier needs. `git add` wants the
+    file, so the commit step handed it a name and got a refusal — after the expensive part had
+    already been paid for.
+
+    **And the same line dropped `files_to_add` altogether**, so a plan that introduces a file
+    this repository does not have yet — which is exactly what
+    `tests/test_the_trust_boundary_of_run_command.py` is — would never be staged, and a
+    verification would pass over a change the branch does not carry.
+
+    So the node part is taken off before staging, on the same rule the applied-change guard uses,
+    and all three of a plan's lists are staged rather than two.
+    """
+    from aisdlc.agents.a_commit_recording_the_change import the_paths_a_commit_must_stage
+
+    the_plan = _a_plan_naming_a_test_by_node_id()
+    the_plan = the_plan.model_copy(
+        update={"files_to_add": ["tests/test_the_trust_boundary_of_run_command.py"]}
+    )
+
+    assert the_paths_a_commit_must_stage(the_plan) == [
+        "src/aisdlc/tools/run_command.py",
+        "tests/test_the_trust_boundary_of_run_command.py",
+        "tests/test_what_two_real_runs_found.py",
+    ]
