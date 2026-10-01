@@ -56,6 +56,11 @@ from aisdlc.store.what_a_run_records import something_the_run_said
 from aisdlc.store.where_the_register_lives import holding_the_register
 from aisdlc.tools.github_client import a_github_client, the_credential
 from aisdlc.tools.github_clone_repository import RepositoryToClone, clone_repository
+from aisdlc.tools.github_list_open_issues import (
+    AnOpenIssue,
+    ReadWhichIssuesAreOpen,
+    the_issues_this_deployment_can_read,
+)
 from aisdlc.tools.github_open_an_issue import an_issue_for, open_an_issue
 from aisdlc.tools.the_project_directory import where_projects_live
 
@@ -154,6 +159,7 @@ class WhatABriefingFound(BaseModel):
     opportunities: list[AnOpportunity]
     what_the_briefing_could_not_settle: list[str]
     agent_judgement: str | None = None
+    what_was_already_tracked: list[AnOpenIssue] = []
 
 
 def where_a_briefings_clone_lives(briefing_id: str) -> Path:
@@ -184,6 +190,7 @@ def a_repository_briefed_itself(
     repository: Repository,
     a_briefing: Brief | None = None,
     plan_the_clone: PlanTheBriefingsClone | None = None,
+    read_which_issues_are_open: ReadWhichIssuesAreOpen | None = None,
 ) -> WhatABriefingFound:
     """Read this repository and say what work it could be given.
 
@@ -194,6 +201,14 @@ def a_repository_briefed_itself(
     **The report is proved against the clone before it is returned**, so an opportunity naming a
     file the repository does not have is refused here and the model is asked again, rather than
     becoming a ticket a person is asked to rule on.
+
+    **The repository's open issues are read here and shown to the briefing agent**, because a
+    briefing that proposes work somebody has already filed is the most likely wrong answer this
+    node can give — and it is paid for by a stranger, in a queue they cannot easily ignore. They
+    are recorded on the report so that filing can refuse a duplicate against the same list the
+    model was shown. **The list is what the model was shown, which is a limit**: an issue filed
+    between the briefing and the pick is not in it, and that is a window worth naming rather than
+    closing.
 
     **The briefing agent and the clone planner are both parameters, and both default.** The
     agent is the same shape the composition root closes over for the planner and the implementer
@@ -214,8 +229,14 @@ def a_repository_briefed_itself(
     planning = plan_the_clone or cloning_a_repository_to_read_only()
     the_clone = clone_repository(planning(repository, where))
 
+    what_was_already_tracked = (
+        read_which_issues_are_open or the_issues_this_deployment_can_read()
+    )(repository)
+
     the_briefing = a_briefing or the_briefing_using_the_configured_model()
-    the_report = the_briefing(the_clone, repository, what_the_environment_allows())
+    the_report = the_briefing(
+        the_clone, repository, what_the_environment_allows(), what_was_already_tracked
+    )
 
     _the_briefing_was_said(the_briefing_id, repository, the_report)
 
@@ -226,6 +247,7 @@ def a_repository_briefed_itself(
         opportunities=the_report.opportunities,
         what_the_briefing_could_not_settle=the_report.what_the_briefing_could_not_settle,
         agent_judgement=the_report.agent_judgement.the_text_of_the_note_this_is(),
+        what_was_already_tracked=what_was_already_tracked,
     )
 
 
@@ -280,7 +302,10 @@ def filing_the_picks_a_person_made(
     the_chosen = _the_opportunities_at(briefing, which)
 
     the_work_item_ids = filing_what_the_briefing_found(
-        _the_report_behind(briefing), the_chosen, open_the_issue
+        _the_report_behind(briefing),
+        the_chosen,
+        open_the_issue,
+        briefing.what_was_already_tracked,
     )
 
     return ARepositoryBriefedItself(

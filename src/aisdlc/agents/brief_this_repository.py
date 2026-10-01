@@ -29,7 +29,7 @@ board is not empty.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -46,6 +46,7 @@ from aisdlc.llm.correction_budget import (
     may_this_run_keep_asking,
 )
 from aisdlc.tools.github_clone_repository import ClonedRepository, RepositoryToClone
+from aisdlc.tools.github_list_open_issues import AnOpenIssue
 from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 # What a model is asked for, and what the answer is validated into. Two names rather than one
@@ -68,12 +69,47 @@ WHAT_IS_ASKED_FOR_HERE = (
 )
 
 
+def _what_is_already_tracked_says(what_is_already_tracked: Sequence[AnOpenIssue]) -> str:
+    """The list of open issues the briefing is shown, and what it is told to do about them.
+
+    **The list is here because proposing work a team has already agreed to do is the most
+    likely wrong answer this node can give**, and a model told to "propose work" proposes work
+    it knows about — it is a retrieval task and it recalls a different project. Listing what is
+    open turns it into a lookup.
+
+    **And the list is not what stops it.** Filing refuses a duplicate before anything is opened,
+    in `filing_what_the_briefing_found`, because a prompt is not a check. This section exists to
+    make duplication unlikely; the refusal exists to make it not happen.
+
+    **A repository with no open issues says so in one line**, rather than saying nothing. "Nobody
+    has filed anything" and "you were not shown anything" read identically to a model, and only
+    one of them is true.
+    """
+    if not what_is_already_tracked:
+        return (
+            "\nNobody has filed an issue on this repository yet, so anything you find is "
+            "probably worth filing. There is nothing already tracked to duplicate.\n"
+        )
+    the_open_ones = "\n".join(
+        f"- #{an_issue.number} {an_issue.title}" for an_issue in what_is_already_tracked
+    )
+    return (
+        "\nThis repository already has these issues open:\n\n"
+        f"{the_open_ones}\n\n"
+        "**Do not propose any of this work again.** A team that has already agreed to do "
+        "something and is then sent a second issue about it has been sent work, not help. If "
+        "everything you can see in the code is already covered by one of these, say so and "
+        "return an empty list — that is a result.\n"
+    )
+
+
 def the_prompt_to_brief_a_repository(
     inspection: str,
     what_the_clone_holds: list[str],
     repository: Repository,
     how_many_opportunities: int,
     what_was_wrong_about_the_last_answer: str | None = None,
+    what_is_already_tracked: Sequence[AnOpenIssue] = (),
 ) -> str:
     """The question put to the model about one repository it is being asked to brief itself.
 
@@ -95,6 +131,7 @@ def the_prompt_to_brief_a_repository(
     trusted: a model told to cite real files will invent a plausible one, and the refusal is what
     turns that into a second question instead of a ticket.
     """
+    what_is_already_tracked_says = _what_is_already_tracked_says(what_is_already_tracked)
     correction = (
         ""
         if what_was_wrong_about_the_last_answer is None
@@ -120,6 +157,7 @@ def the_prompt_to_brief_a_repository(
         "invent work to fill the space.\n"
         "\n"
         f"Each opportunity names these: {', '.join(WHAT_EACH_OPPORTUNITY_MAY_NAME)}.\n"
+        f"{what_is_already_tracked_says}"
         f"{correction}"
         "\n"
         "Every path in `the_files_that_show_this` must be **copied from the list below**, written "
@@ -151,6 +189,7 @@ def brief_this_repository(
     repository: Repository,
     model: BaseChatModel,
     how_many_opportunities: int = 5,
+    what_is_already_tracked: Sequence[AnOpenIssue] = (),
 ) -> TheOpportunitiesThisRepositoryOffers:
     """What this repository could be given, with every citation proved against the clone.
 
@@ -190,6 +229,7 @@ def brief_this_repository(
                             repository,
                             how_many_opportunities,
                             what_was_wrong,
+                            what_is_already_tracked,
                         )
                     )
                 ),
@@ -258,12 +298,14 @@ def the_briefing_using_the_configured_model() -> Brief:
         clone: ClonedRepository,
         repository: Repository,
         how_many_opportunities: int = 5,
+        what_is_already_tracked: Sequence[AnOpenIssue] = (),
     ) -> TheOpportunitiesThisRepositoryOffers:
         return brief_this_repository(
             clone,
             repository,
             a_model_for(a_configuration_from_the_environment()),
             how_many_opportunities,
+            what_is_already_tracked=what_is_already_tracked,
         )
 
     return briefing
@@ -273,7 +315,10 @@ def the_briefing_using_the_configured_model() -> Brief:
 # there is one production implementation and a class would be a file of ceremony around a type
 # annotation — and the two closures the composition root and a test build have the same shape,
 # which is what a reader comparing them needs to see.
-Brief = Callable[[ClonedRepository, Repository, int], TheOpportunitiesThisRepositoryOffers]
+Brief = Callable[
+    [ClonedRepository, Repository, int, Sequence[AnOpenIssue]],
+    TheOpportunitiesThisRepositoryOffers,
+]
 
 
 def cloning_a_repository_to_read_only() -> Callable[[Repository, Path], RepositoryToClone]:
