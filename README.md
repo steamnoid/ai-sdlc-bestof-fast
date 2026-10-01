@@ -71,7 +71,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 53 passed, 1 skipped, 5s, no network, no model, no credential, no container
+uv run pytest -q     # 54 passed, 1 skipped, 5s, no network, no model, no credential, no container
 
 # The one test that asks a model runs when a deployment has stated LLM_PROVIDER / LLM_ENDPOINT /
 # LLM_MODEL, and skips with the reason printed when it has not. To watch it judge:
@@ -481,22 +481,33 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships seven test files, and each one is a claim
+  end-to-end tests were not copied. This repository ships eight test files, and each one is a claim
   rather than a category:
 
   | file | what it holds this repository to |
   |---|---|
-  | `test_a_run_from_a_request_to_a_delivery` | a run from a sentence to a delivery, and both repairs walked end to end |
-  | `test_what_two_real_runs_found` | the defects two real runs found, and the inspections that carry the code now |
-  | `test_the_supervisor_deciding_what_to_repeat` | every refusal routes to the supervisor, and no node chooses a destination *and* carries an edge |
-  | `test_a_repository_briefing_itself` | a repository briefs itself and filing is refused without a credential |
-  | `test_the_tag_this_system_leaves_on_what_it_writes` | every issue and pull request carries the project's full name |
-  | `test_whether_anything_observed_the_change` | the rule that catches a change nothing observed, and its one gap |
-  | `test_a_real_model_judging_a_real_refusal` | a real model's judgement inside a real graph; skips loudly without a credential |
+  | file | what it holds this repository to |
+  |---|---|
+  | `test_a_run_from_a_request_to_a_delivery.py` | a run from a sentence to a delivery, and both repairs walked end to end |
+  | `test_what_two_real_runs_found.py` | the defects two real runs found, and the inspections that carry the code now |
+  | `test_the_supervisor_deciding_what_to_repeat.py` | every refusal routes to the supervisor, and no node chooses a destination *and* carries an edge |
+  | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
+  | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
+  | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
+  | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
-  `ai-sdlc-os`. **Three of these six did not exist a week ago**, and two of them exist because a
+  `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a
   check this repository had written could not have failed.
+
+  **And the table is checked rather than trusted**, by the last row of it. The tag feature landed
+  with eleven tests and a commit message describing a README section that was never written — the
+  edit anchored on a heading belonging to another repository, so it silently did nothing, and the
+  commit passed because an unrelated line in the same edit did land. Two days later this table
+  still said "four test files" when there were six. Both times a count went stale and nothing
+  noticed, so a test now compares the files on disk against the names here and fails on either
+  difference.
 - **The quality gates the engine was built under.** Strict TDD, the readability guards, the
   glossary guard, the per-cycle commit discipline, `mypy --strict`, the e2e and container tiers.
   This repository was assembled for speed and carries one test, `ruff`, and a non-strict `mypy`.
