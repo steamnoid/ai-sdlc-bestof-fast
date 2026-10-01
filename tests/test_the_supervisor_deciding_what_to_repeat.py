@@ -42,7 +42,7 @@ from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.role import Role
 from aisdlc.domain.stage import Stage
-from aisdlc.domain.state_machine import transition
+from aisdlc.domain.state_machine import StateMachineError, transition
 from aisdlc.domain.the_work_each_agent_has_done import (
     TheWorkEachAgentHasDone,
     TheWorkOneAgentHasDone,
@@ -55,6 +55,10 @@ from aisdlc.graph.supervise_a_repair import (
     TheSupervisorJudgedThisIsNotRepairingError,
     supervise_a_repair,
     the_text_of_the_decision_this_is,
+)
+from aisdlc.graph.the_agents_a_run_reasons_with import (
+    THE_DEVELOPER_IMPLEMENTATION_AGENT,
+    THE_DEVELOPER_PLANNING_AGENT,
 )
 from aisdlc.graph.what_to_repeat import (
     WhatOneAgentMustDoAgain,
@@ -970,3 +974,73 @@ def _the_nodes_with_an_edge_out_of_them() -> set[str]:
         ):
             the_nodes_with_an_edge_out.add(the_node_it_leaves_from.value)
     return the_nodes_with_an_edge_out
+
+
+def test_a_repair_may_not_put_a_work_item_into_another_agents_hands() -> None:
+    """The rule run six broke, and the rule the state machine already enforces.
+
+    **A real run crashed on this.** The verification was refused, the supervisor answered
+    *rewrite the plan*, and the route took the work item straight from `aisdlc-dev-impl` to
+    `aisdlc-dev-plan`:
+
+        StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it
+        to aisdlc-dev-plan; a work item is released to a human, not to another agent
+
+    The state machine was right and the route was wrong, and nothing in this file had heard of
+    the combination — because the two places that could be wrong are in different modules and the
+    supervisor tests only ever look at what the supervisor *answered*.
+
+    **So this asks the question at the only place both facts are visible at once:** for every
+    agent a repair may name, can that agent legally be handed this work item from where it is?
+    That holds only if the holder is already that agent. Everything else needs a release first,
+    and `AWAITING_AGENT_PICKUP` is not one — the biconditional invariant says a work item waiting
+    for a pickup is held by an agent, so the only release the table allows is
+    `AWAITING_HUMAN_APPROVAL` with no agent at all.
+
+    **A characterisation test, not a change.** It is green now and it should stay green: it names
+    the constraint that whoever builds the release has to satisfy, so a release that forgets to
+    let go fails here rather than in a twenty-minute run.
+    """
+    the_agents_a_repair_may_name = (
+        THE_DEVELOPER_PLANNING_AGENT,
+        THE_DEVELOPER_IMPLEMENTATION_AGENT,
+    )
+
+    for the_agent_named in the_agents_a_repair_may_name:
+        for held_by, to_stage in (
+            (THE_DEVELOPER_IMPLEMENTATION_AGENT, Stage.AWAITING_AGENT_PICKUP),
+            (THE_DEVELOPER_PLANNING_AGENT, Stage.AWAITING_AGENT_PICKUP),
+        ):
+            the_work_item = _a_work_item_held_by(held_by)
+            if held_by == the_agent_named:
+                continue
+            with pytest.raises(StateMachineError):
+                transition(
+                    the_work_item,
+                    to_stage,
+                    the_agent_named,
+                    Role.DEV,
+                )
+
+    # And the release that would make it legal, named here so the rule above is not read as
+    # "a repair can never change the holder": handing it to *no* agent is how the holder lets go.
+    transition(
+        _a_work_item_held_by(THE_DEVELOPER_IMPLEMENTATION_AGENT),
+        Stage.AWAITING_HUMAN_APPROVAL,
+        None,
+        Role.DEV,
+    )
+
+
+def _a_work_item_held_by(agent: str) -> WorkItem:
+    """A work item an agent is holding, which is where a refusal leaves one."""
+    the_work_item = a_work_item_commissioned_for_an_agent(
+        work_item_id="issue-7",
+        repository=A_REPOSITORY,
+        accountable_role=Role.DEV,
+        commissioned_by="a person",
+        requested=a_request_about("add a health endpoint"),
+    )
+    return the_work_item.model_copy(
+        update={"stage": Stage.IN_PROGRESS_BY_AGENT, "agent": agent},
+    )
