@@ -343,6 +343,25 @@ def _every_written_file_was_named_by_the_plan(
         seen.append(write.path)
 
 
+def _the_file_a_test_is_written_into(what_was_named: str) -> str:
+    """The file part of a name, for a plan that named a test rather than a path.
+
+    **A real run refused a perfect implementer here.** Seven tests were planned as
+    `tests/test_what_two_real_runs_found.py::test_…` — pytest node IDs, which name a test
+    exactly and are what the verifier needs — and compared against the paths an implementer
+    wrote, so the seven could never match and the guard fired naming all seven. `tests_to_add`
+    is a list of strings and nothing checks a string is a path, so a model may be more
+    specific than the field without anything objecting.
+
+    **The file part on both sides, and not only on the plan's.** Writing the file is what the
+    plan asked for, so `a.py::test_x` is satisfied by writing `a.py`. But dropping the node
+    part from one side alone would let a plan claim `a.py::test_x` while the implementer wrote
+    `b.py`; comparing the file on both sides keeps the file the claim, which is what the
+    trace says afterwards.
+    """
+    return what_was_named.split("::", 1)[0]
+
+
 def _every_file_the_plan_named_was_written(
     plan: ImplementationPlan, written: list[FileToWrite]
 ) -> None:
@@ -352,9 +371,11 @@ def _every_file_the_plan_named_was_written(
     the plan describes, while every record between the requirement and the pull request
     still read as complete.
     """
-    written_paths = [write.path for write in written]
+    written_paths = [_the_file_a_test_is_written_into(write.path) for write in written]
     missing = [
-        path for path in the_paths_the_plan_names(plan) if path not in written_paths
+        path
+        for path in the_paths_the_plan_names(plan)
+        if _the_file_a_test_is_written_into(path) not in written_paths
     ]
 
     if missing:

@@ -38,6 +38,11 @@ from langgraph.types import Command
 import aisdlc.graph.lifecycle as lifecycle_module
 import aisdlc.verify_the_change as verify_the_change
 from aisdlc.agents import implement_the_plan
+from aisdlc.agents.implement_the_plan import (
+    FileToWrite,
+    _every_file_the_plan_named_was_written,
+)
+from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.role import Role
@@ -1088,3 +1093,51 @@ def test_a_repair_that_hands_the_work_item_to_another_agent_stops_the_run(
 
     assert str(THE_IMPLEMENTER) in str(what_happened.value)
     assert str(THE_PLANNER) in str(what_happened.value)
+
+
+def test_a_planned_test_named_by_node_id_is_satisfied_by_writing_that_file() -> None:
+    """A real run refused a perfect implementer, because a node ID is not a path.
+
+    Run seven planned seven tests as `tests/test_what_two_real_runs_found.py::test_…` and the
+    guard compared those strings against the paths the implementer wrote, so the seven could
+    never be found and `PlannedFileNotWrittenError` fired naming all seven — on a run whose
+    checkout was, as it happens, empty for a different reason.
+
+    **`tests_to_add` is a list of strings and nothing checks a string is a path**, which is the
+    same shape as the Dockerfile: the model is allowed to be more specific than the field, and
+    the field is not what the model obeys. `implementation_plan.py` says outright that this is
+    the one list whose paths are not checked against the clone, and it is right — but nothing
+    then *normalises* it either, so the comparison at the end is between two spellings of one
+    place.
+
+    **A test named `file::name` is the file `name` lives in, and writing the file is what the
+    plan asked for.** So the node part is dropped on both sides before comparing. Dropping it
+    only on the plan's side would let a plan claim `a.py::test_x` while the implementer wrote
+    `b.py` and be satisfied; comparing the file part on both sides keeps the file the thing that
+    has to match, which is the claim the trace actually makes.
+    """
+    the_plan = _a_plan_naming_a_test_by_node_id()
+    what_was_written = [
+        _a_file_written_to("tests/test_what_two_real_runs_found.py"),
+        _a_file_written_to("src/aisdlc/tools/run_command.py"),
+    ]
+
+    _every_file_the_plan_named_was_written(the_plan, what_was_written)
+
+
+def _a_plan_naming_a_test_by_node_id() -> ImplementationPlan:
+    """A plan whose test list holds pytest node IDs, which is what a real model returned."""
+    return ImplementationPlan(
+        what_this_change_is_for="confine a command to the checkout",
+        files_to_change=["src/aisdlc/tools/run_command.py"],
+        files_to_add=[],
+        tests_to_add=[
+            "tests/test_what_two_real_runs_found.py::test_the_checkout_is_a_place_and_not_a_"
+            "string_prefix_so_srv_checkout_2_is_refused",
+        ],
+    )
+
+
+def _a_file_written_to(path: str) -> FileToWrite:
+    """One file the implementer said it wrote, at the path a file lives at."""
+    return FileToWrite(path=path, content="the contents\n")
