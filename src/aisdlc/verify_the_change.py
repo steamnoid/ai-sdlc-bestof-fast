@@ -20,6 +20,7 @@ no answer on a checkout somebody else put back.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 
 from aisdlc.agents.verification_report import VerificationReport
@@ -181,6 +182,23 @@ def refuse_a_change_nothing_observed(
     )
 
 
+# **Not a test, and that is the whole point.** A returned value rather than a raised error
+# because a plan may name three tests and this runner can speak about none of them: it is one
+# fact about the witness, not three facts about the change. Raising would say the change was
+# wrong, and nothing here knows that.
+NO_WITNESS_COULD_NAME_THIS_FILE = "this runner named no file, so nothing can say whether it ran"
+
+# **The count, in whichever of the two orders a runner writes it, and behind whatever mark it
+# decorates the line with.** Read out of containers and not remembered. A vitest report says
+# "Tests  1 passed"; node's `spec` reporter puts an information mark in front of "tests 1"; node's
+# `tap` reporter says "# tests 1"; pytest's collect-only says "68 tests collected" — with the
+# number *before* the word, which is why a phrase list read only forwards found none of them.
+HOW_MANY_TESTS_A_RUNNER_SAYS = re.compile(
+    r"(\d+)\s+tests?\b"     # pytest: 68 tests collected
+    r"|\btests?\s*[:#]?\s*(\d+)"  # spec/tap/vitest: tests 1, # tests 1, Tests  1
+)
+
+
 def the_tests_the_suite_never_ran(
     the_tests_the_plan_named: Sequence[str], the_suite: SuiteOutcome
 ) -> list[str]:
@@ -214,11 +232,38 @@ def the_tests_the_suite_never_ran(
     # listing does not exist unless the runner was asked, which is the runner's business.
     what_the_runner_says = "\n".join((the_suite.what_it_collected, the_suite.output))
 
+    # **A witness that could not speak is not a witness that said no, and this is where the two
+    # are told apart.** The runner is asked for a listing and for a report; a report of vitest's
+    # marks or of a pytest listing names files, and Node's built-in runner names the test and
+    # leaves the file out — four reporters tried and not one prints a path. An empty listing
+    # beside a suite that says it ran something is therefore the absence of a witness, and
+    # reading it as an empty collection accuses every test a correct change adds of not running.
     the_never_run: list[str] = []
     for a_test_the_plan_named in the_tests_the_plan_named:
         if not _the_suite_mentioned(what_the_runner_says, a_test_the_plan_named):
             the_never_run.append(a_test_the_plan_named)
+
+    if the_never_run and _the_suite_says_it_ran_something(the_suite.output):
+        return [NO_WITNESS_COULD_NAME_THIS_FILE]
+
     return the_never_run
+
+
+def _the_suite_says_it_ran_something(what_the_suite_said: str) -> bool:
+    """Whether the suite's own report says it ran at least one test.
+
+    **The one number every one of these runners states, and the reason the refusal above is
+    conditional.** A green run over a repository with no tests says `tests 0`, and an empty
+    listing beside that is believable — a check that cannot say no protects nothing. A runner that
+    said `tests 1` and named no file has told us it opened something and declined to say what,
+    and the only honest reading of that is that the question cannot be answered here.
+    """
+    for a_line in what_the_suite_said.splitlines():
+        for the_number_before, the_number_after in HOW_MANY_TESTS_A_RUNNER_SAYS.findall(a_line):
+            the_count = the_number_before or the_number_after
+            if the_count and int(the_count) > 0:
+                return True
+    return False
 
 
 def _the_suite_mentioned(what_the_suite_said: str, a_test: str) -> bool:

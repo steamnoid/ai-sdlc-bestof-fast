@@ -35,7 +35,10 @@ These tests say so at the only place it can be checked cheaply — no container,
 
 from __future__ import annotations
 
-from aisdlc.verify_the_change import the_tests_the_suite_never_ran
+from aisdlc.verify_the_change import (
+    NO_WITNESS_COULD_NAME_THIS_FILE,
+    the_tests_the_suite_never_ran,
+)
 
 A_TEST_THE_PLAN_NAMED = "tests/test_the_trust_boundary_of_run_command.py"
 
@@ -158,4 +161,64 @@ def _a_suite_that_collected(what_the_suite_said: str, what_it_collected: str):
         dependencies_installed=True,
         output=what_the_suite_said,
         what_it_collected=what_it_collected,
+    )
+
+
+# **The two marks this runner prints, as escapes, for the reason the three vitest marks already
+# are** — `THE_MARKS_A_SUITE_NAMES_A_FILE_BY` spells itself that way so the source is ASCII and
+# nobody's editor has to guess what a lone mark means. These were read out of a container, and a
+# character that renders as a box in one terminal is a test that fails for a reason nobody can see.
+A_NODE_PASSDED = "\u2714 the_edge_it_does_take (0.27ms)"
+A_NODE_SAYS_ONE_TEST_RAN = "\u2139 tests 1\n\u2139 pass 1\n\u2139 fail 0\n"
+A_NODE_SAYS_NO_TEST_RAN = "\u2139 tests 0\n\u2139 pass 0\n\u2139 fail 0\n"
+
+
+def test_a_runner_that_cannot_name_its_files_is_not_read_as_having_collected_nothing() -> None:
+    """**Read out of a container, and it is the case that makes the rest of this file necessary.**
+
+    `node --test` prints `ok 1 - the_edge_it_does_take` and nothing else. Four reporters were run
+    against it — `spec`, `tap`, `dot`, `junit` — and **not one of them prints a file path.** A
+    vitest report names files, a pytest listing names `path::test_name`, and Node's own runner
+    names the test and leaves the file out.
+
+    **So an empty listing from a green suite means "this runner cannot say", and it does not mean
+    "this runner collected nothing".** Read as the second, every test a correct change adds is
+    reported unrun and the delivery is refused for not running tests it ran — which is the
+    mirror image of the hollow pull request, and a false accusation rather than a missed one.
+
+    **And it is not fixable by scraping harder**, which is what the three marks before it tried.
+    There is no file in the output to find. The fix is to ask the suite whether it ran anything
+    at all, because that it does say, and to refuse to accuse on a witness that could not speak.
+    """
+    the_suite = _a_suite_that_collected(
+        what_the_suite_said=f"{A_NODE_PASSDED}\n{A_NODE_SAYS_ONE_TEST_RAN}",
+        what_it_collected=f"{A_NODE_PASSDED}\n{A_NODE_SAYS_ONE_TEST_RAN}",
+    )
+
+    assert the_suite.what_it_collected.strip() != "", "a fixture with no listing proves nothing"
+    assert the_tests_the_suite_never_ran([A_TEST_THE_PLAN_NAMED], the_suite) == [
+        NO_WITNESS_COULD_NAME_THIS_FILE
+    ], (
+        "a runner that printed no file name and said it passed one test cannot be read as having "
+        "collected nothing. This is the Node built-in runner's real output, and reading it as an "
+        "empty collection refuses every correct change made to a project that uses it"
+    )
+
+
+def test_a_suite_that_says_it_collected_nothing_is_believed() -> None:
+    """**The other side, or the rule above is just "never accuse".**
+
+    A green run over a repository with no tests says so in a number, and an empty listing beside
+    that number is believable. **A check that cannot say no is a check that protects nothing.**
+    """
+    the_suite = _a_suite_that_collected(
+        what_the_suite_said=A_NODE_SAYS_NO_TEST_RAN,
+        what_it_collected=A_NODE_SAYS_NO_TEST_RAN,
+    )
+
+    assert the_tests_the_suite_never_ran([A_TEST_THE_PLAN_NAMED], the_suite) == [
+        A_TEST_THE_PLAN_NAMED
+    ], (
+        "the suite said it ran no tests and the listing named none, so the plan's test is "
+        "uncollected — and saying otherwise would make this a check that never fails"
     )
