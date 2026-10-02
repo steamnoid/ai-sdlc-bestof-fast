@@ -64,6 +64,20 @@ A_LIMIT_ON_A_SINGLE_FILE = 20_000
 # A limit on everything, because a context is finite and a selection with no ceiling is a
 # repository pasted into a question. It is generous: enough for a real service's
 # security-relevant surface, and small enough that a manifest is not the fourth of it.
+# **How much of the whole limit one directory may hold.** A third, and the number is a third
+# because this repository has two top-level directories that matter — `src` and `tests` — and a
+# third leaves each of them room to be fully useful while making it impossible for either to
+# crowd the other out.
+#
+# **This exists because a budget is not a sort.** The order below is by depth and then by path, and
+# it was chosen so that a `Dockerfile`, a `Makefile` and a `package.json` — which sit at the root
+# and the top — survive a cap. Then test files became part of what an agent is shown, test files
+# sit two levels down and source files four, and the rule that protected the manifest spent the
+# whole limit on tests. A real run was refused at its first gate for citing twenty-one test files
+# and no source file, having been shown exactly that: `src/aisdlc/tools/run_command.py` — the
+# subject of the run — was not in the inspection.
+THE_SHARE_OF_THE_LIMIT_ONE_DIRECTORY_MAY_HOLD = 1 / 3
+
 A_LIMIT_ON_THE_WHOLE_INSPECTION = 120_000
 
 # What a file has to be called to be shown to a model reasoning about a repository. **A name and
@@ -278,6 +292,10 @@ def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]
     `package.json` live — are the ones that survive it.
     """
     how_many_characters_are_spent = 0
+    how_much_each_directory_may_spend = (
+        A_LIMIT_ON_THE_WHOLE_INSPECTION * THE_SHARE_OF_THE_LIMIT_ONE_DIRECTORY_MAY_HOLD
+    )
+    spent_by_directory: dict[str, int] = {}
     what_was_shown: list[str] = []
     what_was_not: list[str] = []
 
@@ -292,7 +310,16 @@ def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]
             what_was_not.append(a_path)
             continue
 
+        the_directory_it_is_in = a_path.split("/", 1)[0]
+        how_much_that_directory_has_spent = spent_by_directory.get(the_directory_it_is_in, 0)
+        if how_much_that_directory_has_spent + len(its_text) > how_much_each_directory_may_spend:
+            what_was_not.append(a_path)
+            continue
+
         what_was_shown.append(f"## {a_path}\n\n{its_text}")
+        spent_by_directory[the_directory_it_is_in] = (
+            how_much_that_directory_has_spent + len(its_text)
+        )
         how_many_characters_are_spent += len(its_text)
 
     return what_was_shown, what_was_not

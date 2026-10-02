@@ -728,3 +728,73 @@ def _git(where: Path, *what: str) -> str:
     if what_happened.returncode != 0:
         pytest.fail(f"git {' '.join(what)} in {where} failed: {what_happened.stderr}")
     return what_happened.stdout
+
+
+def test_one_directory_cannot_spend_the_whole_inspection() -> None:
+    """Adding tests to the inspection made it stop showing source, and no test said so.
+
+    **A real run found this, and the agent's own answer is the proof.** Its discovery report cited
+    twenty-four paths, twenty-one of them test files and none under `src/`, while every one of its
+    `key_components` named a symbol out of `src/aisdlc/`. The gate refused it — correctly — and the
+    reason was not a hallucination. Measuring the inspection that produced it:
+
+    ```text
+    cap is 120000 chars     shown 22     of which src/ 1     of which tests/ 21
+    src/aisdlc/tools/run_command.py in shown: False
+    ```
+
+    **`run_command.py` was the subject of the run and it was not in the inspection.** The sort is
+    by depth and then by path, and it was chosen so that the files nearest the root — a
+    `Dockerfile`, a `Makefile`, a `package.json` — are the ones that survive the cap. Test files
+    sit two levels down and source files four, so making tests visible to agents, which is what
+    the directory rule was for, put them all in front of every source file in the repository.
+
+    **A budget is not a sort, and a sort that lets one directory spend all of it is not a
+    selection.** This is the third time a guard has been blind to a tier: the parser with no
+    caller, the promise with no code, and now a cap nobody re-examined when the thing it selects
+    grew. The property is asserted rather than the fix, so that whichever way it is solved, this
+    keeps holding.
+
+    **What this does not claim, because it cannot be true at this limit.** `run_command.py` stays
+    absent after the quota and will stay absent while one hundred and thirty-six source files do
+    not fit in one hundred and twenty thousand characters. That is a capacity limit, not a
+    selection rule, and no ordering fixes it — the honest answers are a request-aware inspection
+    or a larger limit, and both are decisions about the system rather than about a sort. The
+    property kept here is the one that was broken and is achievable: **no one directory spends
+    the whole inspection.**
+
+    **This repository and not the fixture beside it**, because the first version of this test
+    asked the three-file fixture for a file under `src/` and the fixture has no `src/` at all — a
+    test demanding evidence from a repository that cannot hold it, written in a file whose whole
+    subject is judging whether evidence is representative.
+    """
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+    from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
+
+    the_repository_itself = ClonedRepository(
+        path=Path(__file__).resolve().parents[1], ref="main", commit="0" * 40
+    )
+
+    the_paths_it_showed = _what_the_inspection_showed(
+        an_inspection_of_the_code(the_repository_itself)
+    )
+
+    the_source_it_showed = [
+        a_shown for a_shown in the_paths_it_showed if a_shown.startswith("src/")
+    ]
+
+    assert the_source_it_showed, (
+        "the inspection carries test files and no source file at all, so a run about a source file "
+        "is handed evidence that does not contain it. An agent given this cannot be blamed for "
+        "writing about only what it was shown, and the gate that refuses it for doing exactly that "
+        "is refusing something true"
+    )
+
+
+def _what_the_inspection_showed(an_inspection: str) -> list[str]:
+    """Every path the inspection carried the text of, read from its own headings."""
+    return [
+        a_line.removeprefix("## ")
+        for a_line in an_inspection.splitlines()
+        if a_line.startswith("## ")
+    ]
