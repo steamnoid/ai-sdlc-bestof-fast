@@ -111,11 +111,18 @@ def test_the_planner_is_handed_the_security_report_it_is_meant_to_answer() -> No
     of them. Read from the alias rather than from a parameter name, because a name is a choice
     and a type is the contract.
 
-    **So this test is red, and it is red on purpose.** Three gates approve a `SecurityReport`,
-    the architecture and security analyses are the planner's neighbours in this very list, and
-    the planner has never read either. Repairing it is a decision about the pipeline — a planner
-    that takes the security report is a different planner — and not something to do by deleting
-    the assertion.
+    **So this test was red, and it was red on purpose, and now it is green.** Three gates approve
+    a `SecurityReport`, the architecture and security analyses are the planner's neighbours in
+    this very list, and the planner had never read either. Repairing it was a decision about the
+    pipeline — a planner that takes the security report is a different planner — and not something
+    to do by deleting the assertion, so the assertion stayed and the planner gained an input.
+
+    **The sentence outlived the redness, which is worth more than the fix.** For several pull
+    requests this file carried a comment saying its own test was broken while the test was green,
+    and nobody read it as a lie, because a comment asserting that its test is broken is the kind of
+    sentence a reader skips. It stayed true-looking until someone checked it against the suite.
+    That is the argument for the gate now running this tier: the test was never invisible, but a
+    red test in a tier the gate does not select is invisible *including to its own comment*.
     """
     what_the_planner_is_handed = the_types_the_planner_is_handed()
 

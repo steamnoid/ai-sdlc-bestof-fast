@@ -40,6 +40,13 @@ from aisdlc.tools.inspect_the_repository import (
 )
 from aisdlc.tools.the_project_directory import where_projects_live
 
+# **What the gate is made of, named here so a test can read it.** The workflow and the pytest
+# configuration are the two places the claim "CI runs what pytest collects" is either true or
+# false, and both are read rather than restated — a test holding its own copy of either is a
+# second thing to keep in step.
+THE_GATE = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "gate.yml"
+THE_PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
 # The repository the fixture near the end of this file clones. Named here rather than built in
 # each test, because the three tests that use it are about the same thing and a repository each
 # invented would be one each could be wrong about.
@@ -882,4 +889,54 @@ def test_a_file_the_request_names_is_shown_even_though_its_name_says_nothing() -
         f"the request names {the_path_the_refused_run_was_about} in plain text and the inspection "
         f"does not show it. It showed {len(shown_with_the_request)} files. A run is handed an "
         f"inspection of a repository it is about, and the subject of the run is not in it"
+    )
+
+
+def test_the_gate_runs_every_tier_pytest_declares() -> None:
+    """Eight pull requests were green while a red test sat in a tier the gate never ran.
+
+    `uv run pytest -q` deselects `-m e2e`, and `.github/workflows/gate.yml` ran only that. So a
+    test carrying the `e2e` marker and asserting something true without any real dependency was
+    invisible to the gate, stayed red on `main` through eight pull requests, and every one of them
+    reported green. The test in question says so itself, in its own docstring:
+
+    > **So this test is red, and it is red on purpose.** Three gates approve a `SecurityReport`,
+    > the architecture and security analyses are the planner's neighbours in this very list, and
+    > the planner has never read either.
+
+    **It was fixed in the meantime and the sentence outlived the redness**, which is worth
+    noticing on its own: a comment asserting that its own test is broken stops being read the day
+    the test is repaired, and nothing checks it.
+
+    **So the gate runs the real tier.** Not with secrets — it needs none, and this test is what
+    makes that safe to rely on — and not the container tier, which needs a container and is left
+    opt-in. Every marker pytest declares as a real dependency is a set of tests the gate must be
+    able to fail on, and a marker nobody runs is a marker that hides.
+
+    **Read out of `pyproject.toml` rather than written here**, because the list of markers and the
+    list the gate runs are the same fact said twice, and a test that names them both would pass
+    when they disagree.
+    """
+    import tomllib
+
+    the_declared_markers = [
+        a_marker.split(":", 1)[0].strip()
+        for a_marker in tomllib.loads(THE_PYPROJECT.read_text(encoding="utf-8"))["tool"]["pytest"][
+            "ini_options"
+        ]["markers"]
+    ]
+
+    what_the_gate_runs = THE_GATE.read_text(encoding="utf-8")
+
+    never_run = [
+        a_marker
+        for a_marker in the_declared_markers
+        if f"-m {a_marker}" not in what_the_gate_runs
+        and f'"{a_marker}"' not in what_the_gate_runs
+    ]
+
+    assert not never_run, (
+        f"pytest declares {never_run} as a real dependency and .github/workflows/gate.yml never "
+        f"selects {never_run}. Everything carrying that marker is invisible to the gate, so it can "
+        f"be red on main while the gate is green — which is what happened for eight pull requests"
     )

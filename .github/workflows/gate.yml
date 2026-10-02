@@ -22,8 +22,20 @@ jobs:
             "$GITHUB_WORKSPACE"/*) echo "ok: $resolved" ;;
             *) echo "aisdlc resolved to $resolved, which is outside this checkout"; exit 1 ;;
           esac
-      # The default suite is free of every real dependency, so CI needs no secrets and the
-      # e2e tier is deliberately absent rather than skipped.
+      # The default suite is free of every real dependency, so CI needs no secrets.
       - run: uv run pytest -q
+      # **And the real tiers, with no secret of any kind.** A marker nobody selects is a marker
+      # that hides: this job used to run the default suite alone, so a test carrying `e2e` and
+      # asserting something true without a model could sit red on main while every pull request
+      # reported green — which it did, for eight of them. Everything needing a model skips here
+      # with the reason printed, and everything in these tiers that needs nothing still runs and
+      # can still fail the gate.
+      - run: uv run pytest -q -m e2e
+      # A container is a real dependency in the same sense a credential is, and this tier is the
+      # only evidence that the delivery path works at all. It costs about a hundred seconds and
+      # reaches the network for a dependency install, so it is the step most likely to be flaky —
+      # and it is here rather than run from memory because a proof nobody has to re-run is a proof
+      # that stops being true quietly.
+      - run: uv run pytest -q -m integration
       - run: uv run ruff check .
       - run: uv run mypy src
