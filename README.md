@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 235 passed, 3 skipped, 8 deselected, ~15s, no network, no model, no credential, no container
+uv run pytest -q     # 235 passed, 3 skipped, 8 deselected, ~25s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -1072,6 +1072,22 @@ Stated rather than left to be discovered.
   *"a reader who cannot tell them apart goes to the wrong place."* A supervisor that never produced
   a judgement has failed differently: it never judged. Raising the ceiling error would send a reader
   to `AISDLC_REPEAT_BUDGET` for a run whose budget was never the problem.
+- **A run has pushed a branch and opened a pull request on a real remote, and not merged it.**
+  [\#39](https://github.com/steamnoid/wellbeing-tracker-public/pull/39) on
+  `steamnoid/wellbeing-tracker-public`, opened by a run that passed eight gates, wrote six files,
+  committed them and pushed a branch named after the work item. **That is the first time anything in
+  this repository's history has touched somebody else's repository**, and it is left open on purpose:
+  closing it would destroy the only evidence that the delivery path works.
+
+  **The run refused to merge it, and it was right twice over.** Its checks were `queued` when it
+  looked — the tool treated "nothing has happened yet" as a refusal, which is a real finding and is
+  [#21](https://github.com/steamnoid/ai-sdlc-bestof-fast/pull/21) — and when they finished they were
+  **red**, because `wellbeingt-17-docker.integration.test.ts` calls `expect.skip`, which Vitest does
+  not have. That line is only reached when a Docker build did **not** happen; on `main` it did, the
+  call was never made, and the file passed. **The file has been passing by not being executed**, and
+  this repository's `main` has reported it green since September. A pre-existing defect in the
+  repository, exposed rather than caused — and exactly the thing a green-check rule exists to catch,
+  which is why the two facts are in this entry together and not as two separate findings.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
