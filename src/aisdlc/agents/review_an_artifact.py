@@ -35,7 +35,10 @@ from aisdlc.approval.approval_gate import THE_POLICY_NAMESPACE
 from aisdlc.approval.approval_question import ApprovalQuestion
 from aisdlc.domain.work_item import WorkItem
 from aisdlc.graph.agent_state import AgentState
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import may_this_run_keep_asking
 from aisdlc.tools.the_project_directory import the_project_directory_of
 from aisdlc.tools.what_a_run_leaves_behind import A_FILE_EXTENSION_A_PERSON_CAN_READ
@@ -201,7 +204,7 @@ def review_an_artifact(
                 ask_a_model_for(model, WhatAPolicyJudged).invoke(the_question_to_ask)
             )
             break
-        except ValidationError as unusable:
+        except (AModelAnsweredInAShapeThisSystemCannotReadError, ValidationError) as unusable:
             last_refusal = unusable
 
     if the_judgement is None:

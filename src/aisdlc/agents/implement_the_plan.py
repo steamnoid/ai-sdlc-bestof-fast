@@ -50,7 +50,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.agents.what_an_agent_judged import WhatAnAgentJudged
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -242,7 +245,7 @@ def implement_the_plan(
     them before refusing would leave the first attempt behind when it asked again.
     """
     what_was_wrong: str | None = None
-    last: ValidationError
+    last: ValidationError | AModelAnsweredInAShapeThisSystemCannotReadError
 
     began_at = time.monotonic()
     asked_so_far = 0
@@ -257,7 +260,7 @@ def implement_the_plan(
             _every_written_file_was_named_by_the_plan(plan, answer.files)
             _every_file_the_plan_named_was_written(plan, answer.files)
             break
-        except ValidationError as refused:
+        except (AModelAnsweredInAShapeThisSystemCannotReadError, ValidationError) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
     else:

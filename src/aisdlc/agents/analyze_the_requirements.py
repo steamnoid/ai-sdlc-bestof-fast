@@ -32,7 +32,10 @@ from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.agents.qa_plan import EmptyQaPlanError, QaPlan
 from aisdlc.agents.qa_plan_answer import QaPlanAnswer
 from aisdlc.agents.requirements import Requirements
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -150,7 +153,8 @@ def analyze_the_requirements(
                 edge_cases=answer.edge_cases,
                 regression_risks=answer.regression_risks,
             ), answer
-        except (EmptyQaPlanError, ValidationError) as refused:
+        except (EmptyQaPlanError, ValidationError,
+            AModelAnsweredInAShapeThisSystemCannotReadError) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
 

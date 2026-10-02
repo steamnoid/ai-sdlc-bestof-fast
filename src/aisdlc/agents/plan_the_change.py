@@ -42,7 +42,10 @@ from aisdlc.agents.requirements_answer import AnAmbiguity
 from aisdlc.agents.security_report import SecurityReport
 from aisdlc.agents.what_the_planner_concluded import ImplementationPlanAnswer
 from aisdlc.domain.repository import Repository
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -273,6 +276,7 @@ def plan_the_change(
         | PlannedTestDirectoryNotFoundError
         | PlannedTestDirectoryNotCollectedError
         | ValidationError
+        | AModelAnsweredInAShapeThisSystemCannotReadError
     )
 
     began_at = time.monotonic()
@@ -312,6 +316,7 @@ def plan_the_change(
             PlannedTestDirectoryNotFoundError,
             PlannedTestDirectoryNotCollectedError,
             ValidationError,
+            AModelAnsweredInAShapeThisSystemCannotReadError,
         ) as refused:
             # **The empty plan is corrected here for the reason the five other reasoning
             # nodes correct one.** The budget is the same number and the same question as
