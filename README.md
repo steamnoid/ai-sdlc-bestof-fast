@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 147 passed, 3 skipped, ~8s, no network, no model, no credential, no container
+uv run pytest -q     # 150 passed, 3 skipped, ~8s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -208,6 +208,32 @@ refuses the next `git` command the run makes and the clone is the whole of a run
 refusal names the files through `git diff --name-only --diff-filter=U` rather than out of git's
 prose: a conflicting rebase says `could not apply` and prints `git add/rm <conflicted_files>`
 without naming one, so which path appears at all depends on the backend git picked.
+
+**The rebase names the committer it replays this run's commit under, and that was found by CI.**
+`a_commit_recording_the_change` already says — in its own docstring — that *"naming the identity on
+the command line is also what makes a run work on a machine with no git configuration, which is
+every CI runner"*. **That was true of `git commit` and false of `git rebase`**, which writes a new
+commit for the one it replays and takes both author and committer from configuration. On a runner
+with none, the rebase stopped at `Committer identity unknown`, and the tool reported
+`TheRebaseFoundConflictsError` naming no file it could not merge — **because there was no conflict
+to report**. Three tests passed on a developer machine and failed on a runner, and the failure named
+a conflict. **A fix that landed in one call and whose reasoning was never written down anywhere
+else**, which is the shape of every other defect in this file. The identity is now named on the
+rebase and it is named *before the subcommand* — git reads `-c` as configuration for what follows
+it, so its position is the rule and not a formatting choice.
+
+**And five test files were reading the developer's `~/.gitconfig`.** The same run failed three
+rebase tests, and the cause was partly the tool and partly the tests: each configured a git
+identity on the one working copy that first filled it, and one of them had a *second* clone that
+nothing configured. `git -c user.name=… -c user.email=…` now goes on every `git` call in all five,
+so no test here can be changed by whose machine is running it — verified by running the suite with
+`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null` and a `HOME` that does not exist.
+`test_a_rebase_names_the_identity_it_commits_under.py` reads the arguments **out of the commands
+the tool builds**, not out of its source. The first version of that test parsed the module with
+`ast` and needed three resolvers — for a spliced call, a spliced name and an f-string — before it
+could see the arguments at all, which meant it was reading the program's text and reconstructing
+what git would have been handed: a second implementation of the answer, and therefore a second
+thing that can be wrong.
 
 ---
 
@@ -785,7 +811,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships twenty test files, and each one is a
+  end-to-end tests were not copied. This repository ships twenty-one test files, and each one is a
   claim rather than a category:
 
   | file | what it holds this repository to |
@@ -798,6 +824,7 @@ Stated rather than left to be discovered.
   | `test_a_conflict_is_decided_by_naming_one_of_two_repairs.py` | that a collision is decided by naming one of two repairs, and that prose or another conflict's repair is refused |
   | `test_a_conflicting_delivery_is_settled_by_naming_one_of_two_repairs.py` | that a merge GitHub refused as a conflict hands the run to the repair in GitHub's own words; that a rebase sends it back to the suite rather than to the merge; that leaving a pull request open ends the run without claiming a merge, and that the repair moves no work item |
   | `test_a_rebase_puts_a_runs_commit_on_the_branch_it_joins.py` | that the rebase moves this run's commit onto the branch it would join, on a lease; that a branch somebody else has moved is left alone; that a rebase which changes nothing and one git cannot finish are both refused — the first because it is the bound on the second — and that no `git` argument carries a credential |
+  | `test_a_rebase_names_the_identity_it_commits_under.py` | that the rebase names the committer it replays this run's commit under, and that the arguments are read out of the commands the tool builds rather than out of its source |
   | `test_a_run_merges_only_the_commit_its_suite_went_green_on.py` | that the merge is given the commit the checks were read about, and that neither new node moves the work item |
   | `test_a_briefing_can_file_its_own_opportunities.py` | that a briefing files its own opportunities with no person between, against a double for GitHub, and that the open issues are read again to do it |
   | `test_what_two_real_runs_found.py` | the defects two real runs found, and the inspections that carry the code now |
@@ -812,14 +839,17 @@ Stated rather than left to be discovered.
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
-  `ai-sdlc-os`. **Every one of the twenty is newer than the assembly this repository was cut
+  `ai-sdlc-os`. **Every one of the twenty-one is newer than the assembly this repository was cut
   from**, and four of them exist because a check this repository had written could not have
   failed. Ten arrived with the merge that follows a delivery, and five of those ten are about a
   commit: which one the checks were read on, whether it may be merged at all, which of two
   repairs a conflict gets, what a rebase does to a branch somebody else is using, and whether
   the run merged only what its suite went green on. The eleventh is
   `test_a_work_item_waiting_to_be_picked_up.py`, and it exists because a real run reached the
-  repair supervisor for the first time and died there — see the section on the release.
+  repair supervisor for the first time and died there — see the section on the release. **Two more
+  arrived from CI itself**, and both are about reading the machine instead of being told: five test
+  files were reading the developer's `~/.gitconfig`, and the rebase tool was writing commits under
+  whatever git configuration it found.
 
   **The whole-run test replaced all seven agent seams with hardcoded closures**, so it could
   prove the wiring and could not prove a stage. A graph wired in the wrong order, a stage handed

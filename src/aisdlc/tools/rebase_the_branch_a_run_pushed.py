@@ -50,6 +50,41 @@ from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.github_create_branch import THE_REMOTE
 from aisdlc.tools.run_command import ACommand, the_outcome_of
 
+THE_AGENT_THAT_COMMITTED = "aisdlc-dev-impl"
+"""Who a commit this tool replays is written by, and it is the implementer.
+
+**The agent that made the change, not whoever's git is installed and not this tool.** A rebase
+writes a *new* commit, and a commit naming a person for work a machine did is a forged trail that
+looks exactly like the real thing at the moment somebody has to tell them apart — the same reason
+an approval keeps `decided_by` verbatim. `a_commit_recording_the_change` names the same two values
+for the same reason, and this is the second caller of that pair.
+"""
+
+AN_ADDRESS_A_COMMIT_CAN_BE_READ_FROM = "aisdlc@localhost"
+"""Where a commit this tool writes can be replied to, and it is not a real mailbox.
+
+**`localhost` rather than a plausible domain, because a plausible domain is what a reader mistakes
+for an author.** The address has to exist for git and has to be obviously not a person for whoever
+reads the commit later, and `aisdlc@localhost` says both in the two seconds it takes to read.
+"""
+
+
+def _the_identity_a_replayed_commit_is_written_under() -> list[str]:
+    """The `-c` arguments that name the committer, and their position is part of what they are.
+
+    **Before the subcommand, and that is load-bearing.** git reads `-c` as configuration for the
+    invocation that follows it, so `git -c user.name=x rebase …` sets it for the rebase while
+    `git rebase -c user.name=x …` hands `-c` to `rebase`, which takes no such option and says so.
+    A function rather than a constant because a constant cannot be *placed* — the arguments have to
+    come before the subcommand and a reader has to see that they do.
+    """
+    return [
+        "-c",
+        f"user.name={THE_AGENT_THAT_COMMITTED}",
+        "-c",
+        f"user.email={AN_ADDRESS_A_COMMIT_CAN_BE_READ_FROM}",
+    ]
+
 THE_REMOTE_THE_CODE_CAME_FROM = "upstream"
 """Where the branch a pull request joins is read from, and it is named rather than composed.
 
@@ -273,11 +308,29 @@ def _the_commit_is_replayed(wanted: ARebaseOfTheBranchARunPushed) -> None:
     which backend git chose decides whether a path appears at all. `git diff --diff-filter=U` is
     the query that answers the question on every version, and it has to be asked *before* the
     abort, because a checkout that has been unwound has no conflicted files left in it.
+
+    **The committer is named here, and this is a GitHub runner's finding rather than a tidy-up.** A
+    rebase does not move a commit — it *writes a new one*, with a new author and a new committer,
+    both taken from configuration. On a machine with none, git stops at `Committer identity
+    unknown`, this call exits non-zero, and the refusal below then reports
+    `TheRebaseFoundConflictsError` naming no file it could not merge — **because there was no
+    conflict**. Three tests of `test_a_rebase_puts_a_runs_commit_on_the_branch_it_joins.py` passed
+    on a developer machine and failed on a runner for that reason, and the failure named a conflict.
+
+    `a_commit_recording_the_change` already answers this for `git commit` and says in its own
+    docstring why: *"naming the identity on the command line is also what makes a run work on a
+    machine with no git configuration, which is every CI runner"*. That claim was true of one call
+    and false of this one, which is the same shape as every other defect this repository has found
+    — **a fix that landed in one place and the reasoning was never written down anywhere else.**
     """
     rebased = the_outcome_of(
         ACommand(
             program="git",
-            arguments=["rebase", WHAT_GIT_WAS_ASKED_TO_FETCH],
+            arguments=[
+                *_the_identity_a_replayed_commit_is_written_under(),
+                "rebase",
+                WHAT_GIT_WAS_ASKED_TO_FETCH,
+            ],
             working_directory=str(wanted.clone.path),
         )
     )
