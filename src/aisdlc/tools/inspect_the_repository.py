@@ -77,7 +77,7 @@ A_LIMIT_ON_A_SINGLE_FILE = 20_000
 # whole limit on tests. A real run was refused at its first gate for citing twenty-one test files
 # and no source file, having been shown exactly that: `src/aisdlc/tools/run_command.py` — the
 # subject of the run — was not in the inspection.
-THE_SHARE_OF_THE_LIMIT_ONE_DIRECTORY_MAY_HOLD = 1 / 3
+THE_SHARE_OF_THE_SOURCE_LIMIT_ONE_DIRECTORY_MAY_HOLD = 1 / 3
 
 # **What it shows of what the rule chose, measured rather than assumed.** In this repository the
 # rule chooses forty-two files and this limit shows nineteen; the other twenty-three are named in
@@ -92,7 +92,26 @@ THE_SHARE_OF_THE_LIMIT_ONE_DIRECTORY_MAY_HOLD = 1 / 3
 # which is the file a real run had been refused for not having been shown, because that file was
 # never among the forty-two: the name rule had dropped it. A number changed for the wrong reason is
 # worse than a number left alone, so it is left alone and the request is what the inspection reads.
-A_LIMIT_ON_THE_WHOLE_INSPECTION = 120_000
+#
+# **And it is named for the source, because it bounds the source and nothing else.** It was
+# `A_LIMIT_ON_THE_WHOLE_INSPECTION`, and it is used in exactly two places — once to derive the share
+# above and once as the check that stops the loop — and both are inside the source function. On a
+# repository built for the purpose it is **not** a bound on the assembled inspection:
+#
+# ```text
+# assembled inspection  175926
+# this limit            120000
+# exceeds it by          55926
+# ```
+#
+# The manifests, the README and the CI configuration each get the per-file limit and cannot see
+# one another, so a repository with three large ones beside a full source section is over by nearly
+# half. **Bounding the whole is not done here on purpose**: it re-budgets every inspection every
+# reasoning stage is shown, which is a decision to take with its cost measured, and this is a
+# naming problem. `tests/test_the_limit_is_named_for_what_it_bounds.py` holds both halves — that
+# this name is true, and that the whole still exceeds it, so the day that changes it is a decision
+# rather than a surprise.
+A_LIMIT_ON_THE_SOURCE_THAT_MAY_CARRY_RISK = 120_000
 
 # What a file has to be called to be shown to a model reasoning about a repository. **A name and
 # not a parse, because a name is the only signal available without reading every file in the
@@ -314,7 +333,8 @@ def _the_source_that_may_carry_risk(
     """
     how_many_characters_are_spent = 0
     how_much_each_directory_may_spend = (
-        A_LIMIT_ON_THE_WHOLE_INSPECTION * THE_SHARE_OF_THE_LIMIT_ONE_DIRECTORY_MAY_HOLD
+        A_LIMIT_ON_THE_SOURCE_THAT_MAY_CARRY_RISK
+        * THE_SHARE_OF_THE_SOURCE_LIMIT_ONE_DIRECTORY_MAY_HOLD
     )
     spent_by_directory: dict[str, int] = {}
     what_was_shown: list[str] = []
@@ -327,7 +347,10 @@ def _the_source_that_may_carry_risk(
             what_was_not.append(a_path)
             continue
 
-        if how_many_characters_are_spent + len(its_text) > A_LIMIT_ON_THE_WHOLE_INSPECTION:
+        if (
+            how_many_characters_are_spent + len(its_text)
+            > A_LIMIT_ON_THE_SOURCE_THAT_MAY_CARRY_RISK
+        ):
             what_was_not.append(a_path)
             continue
 
