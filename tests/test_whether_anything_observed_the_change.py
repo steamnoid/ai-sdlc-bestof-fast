@@ -155,6 +155,47 @@ def test_a_change_that_named_no_test_is_not_asked_at_all() -> None:
     )
 
 
+def test_a_change_that_edited_a_test_file_is_asked_even_having_named_no_test() -> None:
+    """The other side of that rule, and a real run's reason for wanting it.
+
+    **A run wrote a regression test that fails on the file as it stands and passes without it —
+    verified by hand, both ways.** The plan named the file to change and left `tests_to_add` empty,
+    so the early return above fired and **nothing measured anything**. The supervisor then wrote on
+    its own card that the test *"passed with the change applied and passed again with the change
+    undone"* — a measurement no run took, said three times, and the run believed.
+
+    **The plan had touched a test file, which is exactly the fact this rule was missing.** A test
+    is what a suite reads, so a change that edits one is a change the suite can notice, and asking
+    is not absurd for it. **The rule's own docstring already said the missing thing was that this
+    function "is not told what the change wrote"** — and the caller has the plan, three lines above
+    the call. This test is the other half of the one above: a plan that touched nothing a suite
+    reads is not asked, and a plan that touched a test is.
+
+    **The third run finds the observation.** The regression test stays in the working tree through
+    `git checkout HEAD~1` on the changed file, so it fails on exactly the content the checkout
+    restored — which is what `without_the_change.passed is False` means, and why nothing is refused.
+    """
+    the_report, _ = _a_green_run_of_the_suite()
+    how_many_times_the_suite_was_run_again = {"count": 0}
+
+    def the_suite_answers_without_the_change() -> SuiteOutcome:
+        how_many_times_the_suite_was_run_again["count"] += 1
+        return _a_suite(False, "1 failed — the regression test still sees expect.skip")
+
+    refuse_a_change_nothing_observed(
+        the_report,
+        [],
+        the_suite_answers_without_the_change,
+        what_the_change_touched=["tests/integration/wellbeingt-17-docker.integration.test.ts"],
+    )
+
+    assert how_many_times_the_suite_was_run_again["count"] == 1, (
+        "the plan touched a test file and named no test, so the rule returned without asking — and "
+        "the run then had no measurement of its own change at all, which is how a supervisor ended "
+        "up reporting a result that was never run"
+    )
+
+
 def _answers_without_the_change_returning(what_the_suite_says: SuiteOutcome):
     """The third run, as the caller supplies it: this module does not know how a suite is undone."""
 
