@@ -121,6 +121,7 @@ def refuse_a_change_nothing_observed(
     verification: VerificationReport,
     the_tests_the_plan_named: Sequence[str],
     how_the_suite_answers_without_the_change: AnswerTheSuiteWithoutTheChange,
+    what_the_change_touched: Sequence[str] = (),
 ) -> None:
     """Undo the change, run the suite once more, and refuse if it agrees with what came before.
 
@@ -162,7 +163,9 @@ def refuse_a_change_nothing_observed(
     everything also asks the stronger question: does *anything* in this repository notice that the
     change came and went.
     """
-    if not verification.suite_after_the_change.passed or not the_tests_the_plan_named:
+    if not verification.suite_after_the_change.passed or not _something_the_suite_could_read(
+        the_tests_the_plan_named, what_the_change_touched
+    ):
         return
 
     without_the_change = how_the_suite_answers_without_the_change()
@@ -292,3 +295,48 @@ def _the_suite_mentioned(what_the_suite_said: str, a_test: str) -> bool:
         if a_line.rstrip().rstrip(")").endswith(a_test) or f"{a_test} " in a_line:
             return True
     return False
+
+
+THE_MARKERS_A_TEST_FILE_IS_NAMED_BY = (".test.", ".spec.")
+"""What in a file's name makes it a test, and it is a convention rather than a guess.
+
+**Every runner this system has met names its test files this way**, and this repository's own
+`vitest.config.ts` says so out loud: `include: ["tests/unit/**/*.{test,spec}.ts", ...]`. **Reading
+the convention off the name is not inventing a rule** — it is reading the one the repository's
+runner already publishes, which is what makes a path like
+`tests/integration/wellbeingt-17-docker.integration.test.ts` answerable at all: it carries
+`.integration.` between two dots and would have been missed by a rule that looked only at a prefix.
+
+**And it is the smallest thing that closes the gap, because it never has to be right about the
+whole file** — only about whether this path is one the suite opens.
+"""
+
+
+def _something_the_suite_could_read(
+    the_tests_the_plan_named: Sequence[str], what_the_change_touched: Sequence[str]
+) -> bool:
+    """Whether this change touched anything a suite could have noticed, and is worth asking.
+
+    **A test the plan named, or a test the plan edited.** Those are the same fact from two
+    directions and either is enough: a test is what a suite reads, so a change that writes one is a
+    change the suite is in a position to notice.
+
+    **This is the fact the rule's own docstring said it was missing**, verbatim — *"this function is
+    not told what the change wrote"* — and the caller has the plan three lines above the call. A
+    real run is why it mattered: a regression test that fails on the file as it stands and passes
+    without it, a plan that named the file to change and left `tests_to_add` empty, this rule
+    returning before measuring anything, and a supervisor then reporting on its own card that the
+    test *"passed with the change undone"* — a result no run ever produced, written three times.
+
+    **What this does not do is close the gap the other tests pin.** A plan that changes only
+    product code and names no test is still not asked, because nothing here knows whether this
+    repository's suite can notice a change to a file it has never seen collected. That case stays
+    written down and stays pinned by the test beside this one.
+    """
+    if the_tests_the_plan_named:
+        return True
+    return any(
+        marker in a_path
+        for a_path in what_the_change_touched
+        for marker in THE_MARKERS_A_TEST_FILE_IS_NAMED_BY
+    )

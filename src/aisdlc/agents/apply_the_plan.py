@@ -110,6 +110,13 @@ def apply_and_verify(
         _the_suite_with_the_change_put_back(
             clone, repository, plan, run_the_suite
         ),
+        # **What the change touched, and this argument is the gap the rule's own docstring named.**
+        # The rule asks whether anything noticed the change and needs to know the change was
+        # readable by a suite; it is not told what the plan wrote, and **the plan is right here**.
+        # A run proved the cost of leaving it out: a plan that edited a test file and named no test,
+        # the rule returning before measuring anything, and a supervisor then reporting on its own
+        # card that the new test *passed with the change undone* — three times, and never run.
+        what_the_change_touched=[*plan.files_to_change, *plan.files_to_add],
     )
     if what_the_implementer_concluded is None:
         raise TheImplementerWasNeverAskedError(
