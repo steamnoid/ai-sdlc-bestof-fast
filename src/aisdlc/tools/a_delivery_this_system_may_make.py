@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.deliver_node import OpenThePullRequest, PushTheBranch
+from aisdlc.graph.merge_node import AskWhetherTheSuiteWentGreen, MergeThePullRequest
+from aisdlc.graph.settle_a_conflict_node import RebaseTheBranch
 from aisdlc.graph.the_delivery_of_this_run import TheDeliveryOfThisRun
 from aisdlc.tools.github_client import a_github_client, the_credential
 from aisdlc.tools.github_clone_repository import ClonedRepository
@@ -34,6 +36,13 @@ from aisdlc.tools.github_create_pull_request import (
     open_a_pull_request,
 )
 from aisdlc.tools.github_fork_repository import the_account_we_fork_into
+from aisdlc.tools.merge_a_pull_request import (
+    WhatTheMergeLanded,
+    a_pull_request_to_merge,
+    merge_a_pull_request,
+)
+from aisdlc.tools.rebase_the_branch_a_run_pushed import rebase_the_branch_a_run_pushed
+from aisdlc.tools.the_suite_went_green import WhatTheSuiteSaid, the_suite_went_green
 
 
 def the_delivery_this_system_may_make(repository: Repository) -> TheDeliveryOfThisRun:
@@ -49,6 +58,9 @@ def the_delivery_this_system_may_make(repository: Repository) -> TheDeliveryOfTh
         our_copy=our_copy,
         push_the_branch=_a_branch_pusher(our_copy),
         open_the_pull_request=_a_pull_request_opener(),
+        ask_whether_the_suite_went_green=_a_reader_of_the_suite(),
+        merge_the_pull_request=_a_merger_of_the_pull_request(),
+        rebase_the_branch=_a_rebaser_of_the_branch(),
     )
 
 
@@ -79,3 +91,50 @@ def _a_pull_request_opener() -> OpenThePullRequest:
         return open_a_pull_request(wanted, a_github_client(), the_credential())
 
     return opening
+
+
+def _a_reader_of_the_suite() -> AskWhetherTheSuiteWentGreen:
+    """Read GitHub's own record of the checks on the commit the pull request points at.
+
+    **The repository is passed in and not taken from the closure**, because the checks are read on
+    the repository the pull request is on — the upstream one, not this deployment's fork — and a
+    closure that had captured the fork would read the fork's checks, which are none.
+    """
+
+    def reading(the_pull_request: AnOpenedPullRequest, repository: Repository) -> WhatTheSuiteSaid:
+        return the_suite_went_green(a_github_client(), the_pull_request, repository)
+
+    return reading
+
+
+def _a_merger_of_the_pull_request() -> MergeThePullRequest:
+    """Merge the one commit the checks were read about, as whoever this deployment is.
+
+    **The commit is an argument rather than something this wrapper looks up**, and that is the
+    whole guarantee: GitHub is asked to merge that sha or nothing, so a head that moved between
+    the checks and the merge is refused by GitHub rather than merged on a verdict about a commit
+    nobody proved.
+    """
+
+    def merging(
+        the_pull_request: AnOpenedPullRequest, repository: Repository, the_commit: str
+    ) -> WhatTheMergeLanded:
+        return merge_a_pull_request(
+            a_github_client(),
+            a_pull_request_to_merge(repository, the_pull_request.number, the_commit),
+            the_credential(),
+        )
+
+    return merging
+
+
+def _a_rebaser_of_the_branch() -> RebaseTheBranch:
+    """The real rebase, in the clone this run already made.
+
+    **No wrapper beyond the function's own name, and that is deliberate.** Every other collaborator
+    here needs a decision made by the deployment — whose copy, whose credential — and this one needs
+    none: the branches are named by the approved delivery and the checkout is in the state. A thin
+    wrapper that closed over nothing would be a place for a future deployment to put an answer, so
+    the tool is handed straight to the node.
+    """
+    return rebase_the_branch_a_run_pushed

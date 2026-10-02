@@ -57,6 +57,13 @@ from aisdlc.graph.discover_node import (
     Discover,
     discover_the_repository_in_this_run,
 )
+from aisdlc.graph.merge_node import (
+    WHERE_A_CONFLICT_IS_SETTLED,
+    WHERE_THE_DELIVERY_WAS_MERGED,
+    WHERE_THE_SUITE_WENT_GREEN,
+    merge_the_delivery_in_this_run,
+    the_suite_went_green_in_this_run,
+)
 from aisdlc.graph.pickup_node import (
     begin_delivering_the_work_item,
     begin_describing_the_architecture,
@@ -89,6 +96,10 @@ from aisdlc.graph.qa_node import (
     AnalyzeTheRequirements,
     analyze_the_requirements_in_this_run,
 )
+from aisdlc.graph.release_the_work_item_node import (
+    WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
+    let_go_of_the_work_item,
+)
 from aisdlc.graph.router import (
     THE_NEXT_ARTIFACT_IS_A_PLAN,
     THE_NEXT_ARTIFACT_IS_THE_CHANGE,
@@ -100,6 +111,7 @@ from aisdlc.graph.security_node import (
     InspectForSecurityRisk,
     inspect_for_security_risk_in_this_run,
 )
+from aisdlc.graph.settle_a_conflict_node import settle_the_conflict_in_this_run
 from aisdlc.graph.supervise_a_repair import (
     WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
     SuperviseARepair,
@@ -125,6 +137,7 @@ from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.github_create_pull_request import AnOpenedPullRequest
 from aisdlc.tools.github_fork_repository import a_clone_this_system_may_write_to
 from aisdlc.tools.run_tests import SuiteOutcome
+from aisdlc.tools.the_suite_went_green import WhatTheSuiteSaid
 
 # The production collaborator, built once. It reads the environment when it is *called*
 # rather than now, so importing this module does not depend on a setting being present.
@@ -210,7 +223,7 @@ def the_lifecycle(
     _the_security_analysis_stage(graph, agents.inspect_for_security)
     _the_planning_stage(graph, agents.plan)
     _the_implementation_stage(graph, agents.apply_and_verify)
-    _the_delivery_stage(graph, delivery)
+    _the_delivery_stage(graph, agents, delivery)
     _the_repair_stage(graph, agents.supervise)
 
     graph.add_edge(START, "offer_the_work_item_to_discover")
@@ -683,6 +696,7 @@ TYPES_A_CHECKPOINT_MAY_HOLD = (
     Severity,
     SuiteOutcome,
     CommissionedRequest,
+    WhatTheSuiteSaid,
 )
 
 
@@ -714,14 +728,36 @@ def _the_repair_stage(graph: StateGraph, supervise: SuperviseARepair) -> None:
     asks the model, and returns `Command(goto=...)` naming the stage the run should start again
     at. An edge from here would be a second, competing answer to the same question, and the
     router's own rule is that a route has one destination.
+
+    **And the release is wired between the three stages and the supervisor, not after it.** A
+    real run's implementer handed a refusal on, the supervisor named the planner, and the run died
+    at the planner's pickup with `StateMachineError: aisdlc-dev-impl holds this work item and
+    cannot hand it to` — a work item holds exactly one agent, and the table refuses to move it into
+    another's hands, which is right. The release asks for the work item to come back to the queue
+    held by nobody, and `transition_the_work_item` is the only writer, so it has to be a node the
+    graph walks rather than a key an agent node writes into the state.
     """
+    graph.add_node(WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM, let_go_of_the_work_item)
+    graph.add_node("apply_the_release_of_the_work_item", transition_the_work_item)
     graph.add_node(
         WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
         lambda state: supervise_a_repair_in_this_run(state, supervise),
     )
+    # **The release is followed by the transition node, because it is a move and only that node
+    # makes moves.** `let_go_of_the_work_item` asks for `AWAITING_AGENT_PICKUP` held by nobody and
+    # hands on to the supervisor; without this edge the request sat in the state and the next
+    # pickup node overwrote it with its own, so the work item stayed in the refusing agent's hands
+    # and the table refused the run. The supervisor then names an agent, and the pickup for that
+    # agent begins from a work item nobody holds.
+    graph.add_edge(WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM, "apply_the_release_of_the_work_item")
+    graph.add_edge(
+        "apply_the_release_of_the_work_item", WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR
+    )
 
 
-def _the_delivery_stage(graph: StateGraph, delivery: TheDeliveryOfThisRun) -> None:
+def _the_delivery_stage(
+    graph: StateGraph, agents: TheAgentsThisRun, delivery: TheDeliveryOfThisRun
+) -> None:
     """Describe the delivery, put it to a person, and on their answer push and open it.
 
     **The last stage, and the only one whose output is a place rather than a finding.** Every
@@ -753,6 +789,22 @@ def _the_delivery_stage(graph: StateGraph, delivery: TheDeliveryOfThisRun) -> No
             state, delivery.our_copy, delivery.push_the_branch, delivery.open_the_pull_request
         ),
     )
+    graph.add_node(
+        WHERE_THE_SUITE_WENT_GREEN,
+        lambda state: the_suite_went_green_in_this_run(
+            state, delivery.ask_whether_the_suite_went_green
+        ),
+    )
+    graph.add_node(
+        WHERE_THE_DELIVERY_WAS_MERGED,
+        lambda state: merge_the_delivery_in_this_run(state, delivery.merge_the_pull_request),
+    )
+    graph.add_node(
+        WHERE_A_CONFLICT_IS_SETTLED,
+        lambda state: settle_the_conflict_in_this_run(
+            state, agents.settle_a_conflict, delivery.rebase_the_branch
+        ),
+    )
     graph.add_edge(
         "offer_the_work_item_to_the_pull_request_agent",
         "apply_the_pickup_by_the_pull_request_agent",
@@ -774,10 +826,18 @@ def _the_delivery_stage(graph: StateGraph, delivery: TheDeliveryOfThisRun) -> No
     # into `DONE` exists in the table and the run was not making it.
     graph.add_node("mark_the_work_item_delivered", mark_the_work_item_delivered)
     graph.add_node("apply_the_delivery_of_the_run", transition_the_work_item)
-    # **No edge out of `deliver_this_run`; the node names where it goes.** Same reason as the
-    # node that implements a plan: this one also returns a `Command(goto=...)` when a suite went
-    # red, and an edge here fires alongside that goto, sending the run to the supervisor and down
-    # the ordinary delivery path in the same step. It is the same defect that made every repair
-    # crash the run, found here by reading for one shape rather than by running into it again.
+    # **The two nodes between the delivery and `DONE`, and no edge out of `deliver_this_run` or out
+    # of the merge.** Same reason as the node that implements a plan: each returns a
+    # `Command(goto=...)` on one outcome, and an edge here fires alongside whichever `goto` it
+    # chose — sending the run to the supervisor and down the ordinary delivery path in the same
+    # step. It is the same defect
+    # that made every repair crash the run, found here by reading for one shape rather than by
+    # running into it again, and found twice because one shape has more than one place to sit.
+    # **The tail is therefore read from both ends**: the delivery hands over to the suite node by
+    # name, the suite node goes on to the merge, the merge node names where the run goes next —
+    # to the repair when GitHub says the pull request conflicts, to the move that says the delivery
+    # is done otherwise — and the repair names its own destination too, back to the suite node when
+    # it has rebased and to the end of the run when it has not.
+    graph.add_edge(WHERE_THE_SUITE_WENT_GREEN, WHERE_THE_DELIVERY_WAS_MERGED)
     graph.add_edge("mark_the_work_item_delivered", "apply_the_delivery_of_the_run")
     graph.add_edge("apply_the_delivery_of_the_run", THE_RUN_IS_OVER)

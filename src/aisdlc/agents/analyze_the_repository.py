@@ -34,7 +34,7 @@ from aisdlc.llm.correction_budget import (
 from aisdlc.llm.llm_configuration import a_configuration_from_the_environment
 from aisdlc.llm.model_factory import a_model_for
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.inspect_the_repository import an_inspection_of
+from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 THE_FIELDS_THE_ANSWER_MAY_NAME = (
     "requirements",
@@ -159,8 +159,18 @@ def analyze_the_repository(
     nothing has usually been shown something too large to summarise and not refused the
     chance to say less. One correction is spent on telling it exactly that, and the run
     raises the refusal rather than returning a proposal nobody can approve.
+
+    **The code inspection and not the shape one, which is the same correction the security
+    analyst needed and this stage had not had.** A person asked for the session cookie's contract
+    to be tested and named the file implementing it; the analyst wrote four requirements about
+    that contract and then listed as an ambiguity what `buildSetCookie` actually returns, because
+    it had been handed a listing and a `package.json` and nothing else. The gate refused the run
+    on precisely that ambiguity, and it was right to — the file was in the clone and the
+    inspection had not been asked for it. **An ambiguity a repository can answer is this system
+    declining to look**, and a run that produces one has not found a question; it has run out of
+    what it was shown.
     """
-    inspection = an_inspection_of(clone)
+    inspection = an_inspection_of_the_code(clone)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()

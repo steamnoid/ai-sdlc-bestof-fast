@@ -31,8 +31,8 @@ from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
 from aisdlc.graph.clone_node import TheRepositoryHasNotBeenClonedYetError
 from aisdlc.graph.pickup_node import THE_DEVELOPER_IMPLEMENTATION_AGENT
 from aisdlc.graph.plan_node import THE_ARTIFACT_PLANNING_PRODUCES
-from aisdlc.graph.supervise_a_repair import (
-    WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
+from aisdlc.graph.release_the_work_item_node import (
+    WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
 )
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.what_people_said_about_a_work_item import a_comment_was_left
@@ -108,7 +108,7 @@ def apply_and_verify_in_this_run(
         # gap was not that the refusal was unhandled; it was that the run stopped on a question it
         # had built a reader for.
         return Command(
-            goto=WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
+            goto=WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
             update={WHAT_STOPPED_THIS_RUN: str(repairable)},
         )
 

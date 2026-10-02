@@ -37,6 +37,11 @@ from aisdlc.agents.discover_the_repository import (
 from aisdlc.agents.inspect_for_security_risk import the_security_analyst_using_the_configured_model
 from aisdlc.agents.plan_the_change import plan_the_change
 from aisdlc.agents.review_an_artifact import a_policy_answering_this_gate
+from aisdlc.agents.what_to_do_around_a_conflict import (
+    WhatKindOfConflict,
+    WhatToDoAroundAConflict,
+    what_to_do_around_a_conflict,
+)
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.work_item import WorkItem
 from aisdlc.graph.agent_state import AgentState
@@ -117,7 +122,22 @@ def a_run_of(
         plan=_a_planner_using(the_model),
         apply_and_verify=_an_implementer_using(the_model),
         supervise=the_supervisor_using_the_configured_model(),
+        settle_a_conflict=_a_settler_using(the_model),
     )
+
+
+def _a_settler_using(the_model: BaseChatModel):
+    """The real settler of a collision, closed over this run's model.
+
+    **The seventh closure and the same reason as the other two.** Deciding between two named repairs
+    is reasoning, so it belongs beside the planner and the implementer in the one module that names
+    a model — and it has no factory in the engine because nothing outside a test ever asked.
+    """
+
+    def settling(about: WhatKindOfConflict, what_is_known: str) -> WhatToDoAroundAConflict:
+        return what_to_do_around_a_conflict(the_model, about, what_is_known)
+
+    return settling
 
 
 def _a_planner_using(the_model: BaseChatModel):
@@ -220,6 +240,7 @@ def a_run_beginning_at(
         "verification_report": None,
         "pull_request_request": None,
         "opened_pull_request": None,
+        "what_the_suite_said": None,
         "presented_artifact_id": THE_ARTIFACT_A_RUN_BEGINS_WITH,
         "presented_artifact_version": ITS_FIRST_VERSION,
         "repair": None,

@@ -29,6 +29,7 @@ file's.
 
 from __future__ import annotations
 
+import ast
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from langgraph.types import Command
 import aisdlc.graph.lifecycle as lifecycle_module
 import aisdlc.verify_the_change as verify_the_change
 from aisdlc.agents import implement_the_plan
+from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.role import Role
@@ -511,9 +513,12 @@ def test_a_suite_that_went_red_is_handed_to_the_supervisor_and_not_delivered() -
     our_copy, push, open_a_pull_request = _a_delivery_that_records()
     the_command = open_the_delivery(a_state, our_copy, push, open_a_pull_request)
 
-    assert the_command.goto == "supervise_a_repair", (
-        "a red suite went to a node other than the supervisor, so nothing in this run could judge "
-        "whether the change or the plan was wrong — which is the only question a red suite poses"
+    assert the_command.goto == "let_go_of_the_work_item", (
+        "a red suite went to a node other than the one that releases the work item and then the "
+        "supervisor. A work item still held by the delivery agent cannot be picked up by whichever "
+        "agent the supervisor names — the transition table refuses it, which a real run did, with "
+        "`StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to`. The "
+        "supervisor is still two steps away and still the only node that judges a red suite"
     )
     assert WHAT_STOPPED_THIS_RUN in the_command.update
     assert "red" in the_command.update[WHAT_STOPPED_THIS_RUN].lower(), (
@@ -625,6 +630,16 @@ def test_the_node_whose_routing_is_checked_is_the_one_the_graph_registers() -> N
     **A check about a function nothing calls is a check that passes forever.** The routing above
     is only a claim about the pipeline if the function carrying it is the one wired into the
     graph, and the only thing that settles that is the name the graph registers.
+
+    **The cast is `None` for both of the things this stage is handed, and the reason is that the
+    graph is only being asked what it registers.** `_the_delivery_stage` grew an `agents`
+    parameter when the conflict node arrived — it registers a node that reads
+    `agents.settle_a_conflict`, and a node that reads a field is a node that needs the field —
+    and this call was left with two arguments, so the stage could not be registered at all. Both
+    collaborators are read inside the lambdas this stage hands the graph, and a lambda is not
+    called by `add_node`, so nothing here ever touches either one. **A cast and not a double:**
+    a stand-in for `TheAgentsThisRun` would be a second cast of the same claim, and this file's
+    claim is about names rather than about collaborators.
     """
     from aisdlc.graph.lifecycle import _the_delivery_stage
 
@@ -644,6 +659,7 @@ def test_the_node_whose_routing_is_checked_is_the_one_the_graph_registers() -> N
 
     _the_delivery_stage(
         AGraphThatRecordsWhatWasAdded(),  # type: ignore[arg-type]
+        agents=None,  # type: ignore[arg-type]
         delivery=None,  # type: ignore[arg-type]
     )
 
@@ -668,7 +684,6 @@ def test_a_change_that_writes_nothing_is_handed_to_the_supervisor() -> None:
     not.
     """
     from aisdlc.agents.implement_the_plan import AWriteThatChangesNothingError
-    from aisdlc.agents.implementation_plan import ImplementationPlan
     from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN
     from aisdlc.graph.apply_node import apply_and_verify_in_this_run
 
@@ -697,16 +712,151 @@ def test_a_change_that_writes_nothing_is_handed_to_the_supervisor() -> None:
     the_command = apply_and_verify_in_this_run(a_state, an_implementer_that_wrote_nothing)  # type: ignore[arg-type]
 
     assert isinstance(the_command, Command)
-    assert the_command.goto == "supervise_a_repair", (
+    assert the_command.goto == "let_go_of_the_work_item", (
         "an implementer that wrote the file back unchanged stops the run, and it is the one "
         "refusal where the answer is least in doubt: the plan named the file and said what to "
         "change in it. A question this system built a reader for is not a question to answer by "
-        "stopping"
+        "stopping. **And it goes through the release first**, because a work item still held by "
+        "this agent cannot be picked up by the one the supervisor names — a real run died of "
+        "`StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to`, on the "
+        "supervisor's first firing inside a real run"
     )
     assert "Dockerfile" in the_command.update[WHAT_STOPPED_THIS_RUN], (
         "the refusal handed over does not name the file, so the supervisor is asked to judge "
         "without knowing which one was left alone"
     )
+
+
+def test_every_node_that_hands_a_refusal_on_releases_the_work_item_through_the_node_that_does() -> (
+    None
+):
+    """All three hand over to the release, and the release is the only place the move is asked for.
+
+    **The defect the previous test found, applied to the two nodes beside it, and then to the
+    shape of the fix itself.** A real run's implementer handed a refusal on and died one node later
+    with `StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to`. The
+    planner and the delivery node have the same shape — same `Command(goto=supervisor)`, same
+    refusal channel, no release — and they are the two a real run reaches whenever a plan is wrong
+    about the runner or a suite goes red after a change.
+
+    **The first version of the fix put the request in each of the three nodes, and that was wrong
+    too.** A request for a move is not a move, and a node that asks for one has not made it — so
+    the request sat in the state and the next pickup node overwrote it with its own. The release
+    is therefore a node, and it is the only place the move is asked for: three nodes hand a
+    refusal to it, and one of them owns the move. **That is why this reads the destinations rather
+    than the updates.**
+    """
+    from aisdlc.graph import apply_node, deliver_node, plan_node
+
+    the_handovers: dict[str, str] = {}
+    for a_module, a_node_name in (
+        (apply_node, "make_and_verify_the_change"),
+        (plan_node, "plan_the_change"),
+        (deliver_node, "deliver_this_run"),
+    ):
+        the_source = ast.parse(Path(a_module.__file__).read_text())
+        for what_is_called in ast.walk(the_source):
+            if not isinstance(what_is_called, ast.Call):
+                continue
+            if not isinstance(what_is_called.func, ast.Name):
+                continue
+            if what_is_called.func.id != "Command":
+                continue
+            what_it_was_given = {
+                a_keyword.arg: a_keyword.value for a_keyword in what_is_called.keywords
+            }
+            what_it_goes_to = what_it_was_given.get("goto")
+            if not isinstance(what_it_goes_to, ast.Name):
+                continue
+            if what_it_goes_to.id == "WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM":
+                the_handovers[a_node_name] = what_it_goes_to.id
+
+    assert set(the_handovers) == {
+        "make_and_verify_the_change",
+        "plan_the_change",
+        "deliver_this_run",
+    }, (
+        f"only {sorted(the_handovers)} hand a refusal on through the release. A refusal handed "
+        "straight to the supervisor leaves the work item in the refusing agent's hands, and the "
+        "supervisor's verdict is then unrepresentable — a real run died of "
+        "`StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to`"
+    )
+
+
+def test_the_release_asks_for_the_work_item_to_come_back_held_by_nobody() -> None:
+    """The move the release makes, and why it is a release and not a hand-over to the next agent.
+
+    **`AWAITING_AGENT_PICKUP` with no agent, and this is the whole of it.** A work item in
+    `IN_PROGRESS_BY_AGENT` holds exactly one agent, and
+    `_takes_the_work_item_from_the_holding_agent` refuses a move that would put it in another
+    agent's hands — which is right, and which is why a repair needs this move to happen first. The
+    alternative would be for this node to name whichever agent the supervisor is about to name,
+    and it cannot know: that verdict has not been made yet, and a node that guessed it would be a
+    second place where a run decides who works next.
+
+    **The refusal is not read here.** `what_stopped_this_run` is already in the state, written by
+    the node that handed over, and the supervisor still reads it in that node's own words.
+
+    **A plain update and not a `Command`, and that is a bug this test was written after.** The
+    first version returned `Command(goto=supervisor, ...)` naming where the work item should go,
+    which reads as the tidier shape — a node that hands on and says what it wants. It skips the
+    transition node that would make the move, so the request sat in the state and the next pickup
+    node overwrote it with its own. The run still died at the same `StateMachineError`, one node
+    later, and the fix had changed nothing observable. **A `Command` names its own destination**,
+    so a node that asks the graph to make a move must not return one.
+    """
+    from aisdlc.graph.release_the_work_item_node import let_go_of_the_work_item
+
+    what_it_asked_for = let_go_of_the_work_item(_a_state_at_the_start_with_a_work_item_being_held())
+
+    assert what_it_asked_for["requested_stage"] == Stage.AWAITING_AGENT_PICKUP, (
+        f"the release asked for {what_it_asked_for['requested_stage']!r}, so the work item is "
+        "left in IN_PROGRESS_BY_AGENT and the agent the supervisor names cannot pick it up"
+    )
+    assert what_it_asked_for["requested_agent"] is None, (
+        f"the release asked for the work item to be held by "
+        f"{what_it_asked_for['requested_agent']!r}, which is the peer hand-over the transition "
+        "table refuses — the very refusal a real run died of. A release names nobody"
+    )
+    assert not isinstance(what_it_asked_for, Command), (
+        "the release returns a Command, so it names its own destination and the transition node "
+        "that would make the move is skipped entirely. The request then sits in the state until "
+        "the next pickup node overwrites it, and the run dies at the same place it died before "
+        "this node existed. A node that asks for a move must let the graph walk it"
+    )
+
+
+def _a_state_at_the_start_with_a_work_item_being_held() -> AgentState:
+    """A run whose work item an agent is holding, which is what a refusal is raised from."""
+    return {
+        "work_item": _a_work_item_being_implemented(),
+        "projects_root": Path("/nowhere"),
+        "clone": None,
+        "requested_stage": Stage.IN_PROGRESS_BY_AGENT,
+        "requested_agent": THE_IMPLEMENTER,
+        "requested_role": Role.DEV,
+        "presented_artifact_id": "VerificationReport",
+        "presented_artifact_version": 1,
+        "decisions": [],
+        "approvals": [],
+        WHAT_STOPPED_THIS_RUN: "the refusal, in the words the refusing node used",
+    }
+
+
+def _a_work_item_being_implemented() -> WorkItem:
+    """A work item an implementer is holding, which is the state a refusal is raised from."""
+    commissioned = a_work_item_commissioned_for_an_agent(
+        work_item_id="issue-9",
+        repository=A_REPOSITORY,
+        accountable_role=Role.DEV,
+        commissioned_by="a person",
+        requested=a_request_about("remove the fallback"),
+    )
+    picked_up = transition(
+        commissioned, Stage.AWAITING_AGENT_PICKUP, THE_IMPLEMENTER, Role.DEV
+    )
+    working = transition(picked_up, Stage.IN_PROGRESS_BY_AGENT, THE_IMPLEMENTER, Role.DEV)
+    return transition(working, Stage.AWAITING_HUMAN_APPROVAL, None, Role.DEV)
 
 
 def _a_clone_standing_in_for_a_real_one() -> object:
@@ -736,7 +886,6 @@ def test_a_test_the_suite_never_ran_is_handed_to_the_supervisor() -> None:
     leaving the third to be discovered by a run is not a defensible way to hold a list, so this
     is the test that says the list is closed.
     """
-    from aisdlc.agents.implementation_plan import ImplementationPlan
     from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN
     from aisdlc.graph.apply_node import apply_and_verify_in_this_run
     from aisdlc.verify_the_change import AnUnrunTestError
@@ -772,11 +921,12 @@ def test_a_test_the_suite_never_ran_is_handed_to_the_supervisor() -> None:
     )
 
     assert isinstance(the_command, Command)
-    assert the_command.goto == "supervise_a_repair", (
-        "a change that was delivered with its test never collected stops the run, and it is the "
-        "one refusal of the three where the report looks entirely healthy — a reader of the "
-        "board sees a green suite and a delivered change, and nothing anywhere says the new test "
-        "was never opened"
+    assert the_command.goto == "let_go_of_the_work_item", (
+        "a change that was delivered with its test never collected goes nowhere that can judge it, "
+        "and it is the one refusal of the three where the report looks entirely healthy — a reader "
+        "of the board sees a green suite and a delivered change, and nothing anywhere says the new "
+        "test was never opened. **Through the release first**, because the work item is still held "
+        "by the implementer and the agent the supervisor names cannot pick it up from there"
     )
     assert "test_health.ts" in the_command.update[WHAT_STOPPED_THIS_RUN], (
         "the refusal handed over does not name the uncollected test, so the supervisor cannot "
@@ -880,9 +1030,14 @@ def test_no_node_that_chooses_its_own_destination_still_carries_an_edge() -> Non
     # which is correct and harmless: a node somebody else sends control to is *supposed* to have
     # an edge out. The node that must not have one is the one that reads the state and decides,
     # because that decision and the edge are two answers to one question.
+    # **The third one is the merge, and it arrived for the same reason as the second.** A pull
+    # request GitHub will not merge is the only conflict a delivery can reach, and settling it is a
+    # node — so the merge node returns a `Command` naming where the run goes on a conflict and where
+    # it goes otherwise. It carried an edge out of it for a day, and this check is what says so.
     the_nodes_that_choose_their_own_destination = [
         "make_and_verify_the_change",
         "deliver_this_run",
+        "merge_the_delivery_in_this_run",
     ]
 
     every_node_the_graph_tells_where_to_go = _the_nodes_with_an_edge_out_of_them()
@@ -896,9 +1051,9 @@ def test_no_node_that_chooses_its_own_destination_still_carries_an_edge() -> Non
             "routing test passed."
         )
 
-    assert len(the_nodes_that_choose_their_own_destination) == 2, (
-        "a third node joined this shape and this list has not been updated, so the check now "
-        "covers two of the places the defect can sit"
+    assert len(the_nodes_that_choose_their_own_destination) == 3, (
+        "a fourth node joined this shape and this list has not been updated, so the check now "
+        "covers three of the places the defect can sit"
     )
 
 
@@ -915,8 +1070,6 @@ def _the_refusals_this_node_hands_on() -> set[str]:
     So it parses. The `except` clause is read as what it is — the tuple of names the node catches —
     and anything in a docstring is ignored, which is the whole point.
     """
-    import ast
-
     the_node = ast.parse(Path(apply_node.__file__).read_text())
     the_names: set[str] = set()
     for a_statement in ast.walk(the_node):
@@ -951,10 +1104,19 @@ def _the_nodes_with_an_edge_out_of_them() -> set[str]:
     test fail, which is the only thing that distinguishes a check that is armed from one that is
     merely green. Parsing cannot fix that habit — it makes the guard real, and the habit is still
     what catches the next one.
-    """
-    import ast
 
+    **And the habit caught a third thing in this very guard, one commit after it was written.**
+    This parsed `add_edge`'s first argument as a *string literal*, which is what the two nodes it
+    was written for pass. The merge node is `add_edge(WHERE_THE_SUITE_WENT_GREEN,
+    WHERE_THE_DELIVERY_WAS_MERGED)` — its arguments are module constants, and a parser that reads
+    only literals saw no edge out of the merge node at all. So the edge was added back, on purpose,
+    to see whether this would fail: **it did not.** The guard was green on the exact wiring that
+    killed every repair in this system, which is worse than not having it, because a green guard is
+    read as a checked thing. The names are now resolved through the module's own constants, which
+    is the other half of reading the graph rather than its text.
+    """
     the_lifecycle = ast.parse(Path(lifecycle_module.__file__).read_text())
+    the_names_the_module_uses_for_its_nodes = _the_node_names_the_lifecycle_declares(the_lifecycle)
     the_nodes_with_an_edge_out: set[str] = set()
     for a_statement in ast.walk(the_lifecycle):
         if not isinstance(a_statement, ast.Call):
@@ -964,9 +1126,74 @@ def _the_nodes_with_an_edge_out_of_them() -> set[str]:
             continue
         if not a_statement.args:
             continue
-        the_node_it_leaves_from = a_statement.args[0]
-        if isinstance(the_node_it_leaves_from, ast.Constant) and isinstance(
-            the_node_it_leaves_from.value, str
-        ):
-            the_nodes_with_an_edge_out.add(the_node_it_leaves_from.value)
+        the_node_it_leaves_from = _the_name_it_leaves_from(
+            a_statement.args[0], the_names_the_module_uses_for_its_nodes
+        )
+        if the_node_it_leaves_from is not None:
+            the_nodes_with_an_edge_out.add(the_node_it_leaves_from)
     return the_nodes_with_an_edge_out
+
+
+def _the_name_it_leaves_from(
+    the_first_argument: ast.expr, the_names_the_module_uses: dict[str, str]
+) -> str | None:
+    """The node name that argument spells, whether it is written out or named by a constant.
+
+    **Both spellings, and the second is what was missing.** `WHERE_THE_SUITE_WENT_GREEN` is how
+    this repository writes the node that has to have no edge out of it, so a parser that only reads
+    literals cannot see an edge out of it — and the guard that was supposed to stop exactly that
+    wiring was green while the edge was there.
+    """
+    if isinstance(the_first_argument, ast.Constant) and isinstance(the_first_argument.value, str):
+        return the_first_argument.value
+    if isinstance(the_first_argument, ast.Name):
+        return the_names_the_module_uses.get(the_first_argument.id)
+    return None
+
+
+def _the_node_names_the_lifecycle_declares(the_lifecycle: ast.Module) -> dict[str, str]:
+    """Every name `lifecycle` uses for one of its nodes, whether it declares it or imports it.
+
+    **Both, and the second is what the first version of this guard missed.** A node name is a
+    string, and where the string came from does not change what it is — but `WHERE_THE_SUITE_WENT_
+    GREEN` is *imported* from `merge_node`, so resolving only this module's own assignments left
+    every edge out of the two nodes that matter invisible to the check. An imported name is read
+    from the module that owns it, which is the same import this test already does.
+    """
+    the_names: dict[str, str] = _the_names_declared_here(the_lifecycle)
+    the_names.update(_the_names_imported_from_where_they_are_owned(the_lifecycle))
+    return the_names
+
+
+def _the_names_declared_here(the_lifecycle: ast.Module) -> dict[str, str]:
+    """The module-level names whose value is a plain string, which is what a node name is here.
+
+    **A name built by a call or a join is not one this graph declares by hand**, and reading one
+    would be reading the module's intent rather than its wiring.
+    """
+    the_names: dict[str, str] = {}
+    for a_statement in the_lifecycle.body:
+        if not isinstance(a_statement, ast.Assign) or len(a_statement.targets) != 1:
+            continue
+        the_target = a_statement.targets[0]
+        if not isinstance(the_target, ast.Name) or not isinstance(a_statement.value, ast.Constant):
+            continue
+        if isinstance(a_statement.value.value, str):
+            the_names[the_target.id] = a_statement.value.value
+    return the_names
+
+
+def _the_names_imported_from_where_they_are_owned(the_lifecycle: ast.Module) -> dict[str, str]:
+    """Every name this module imports that turns out to be a node name, read from its owner."""
+    import importlib
+
+    the_names: dict[str, str] = {}
+    for a_statement in the_lifecycle.body:
+        if not isinstance(a_statement, ast.ImportFrom) or a_statement.module is None:
+            continue
+        the_module_it_came_from = importlib.import_module(a_statement.module)
+        for an_imported in a_statement.names:
+            what_it_holds = getattr(the_module_it_came_from, an_imported.name, None)
+            if isinstance(what_it_holds, str):
+                the_names[an_imported.asname or an_imported.name] = what_it_holds
+    return the_names

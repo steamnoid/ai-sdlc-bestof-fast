@@ -36,6 +36,10 @@ from aisdlc.graph.discover_node import Discover
 from aisdlc.graph.plan_node import PlanTheChange
 from aisdlc.graph.qa_node import AnalyzeTheRequirements
 from aisdlc.graph.security_node import InspectForSecurityRisk
+from aisdlc.graph.settle_a_conflict_node import (
+    SettleTheConflict,
+    no_model_was_given_to_settle_a_conflict,
+)
 from aisdlc.graph.supervise_a_repair import (
     SuperviseARepair,
     no_supervisor_was_given_to_this_run,
@@ -53,3 +57,4 @@ class TheAgentsThisRun(BaseModel):
     plan: PlanTheChange
     apply_and_verify: ApplyAndVerify
     supervise: SuperviseARepair = no_supervisor_was_given_to_this_run
+    settle_a_conflict: SettleTheConflict = no_model_was_given_to_settle_a_conflict

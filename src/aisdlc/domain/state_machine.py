@@ -12,14 +12,63 @@ STAGES_WITHOUT_AN_AGENT = (
     Stage.READY,
     Stage.DONE,
 )
+"""The stages where nobody is working on the work item, and the stage always says so.
+
+**`AWAITING_AGENT_PICKUP` is deliberately not on this list**, though a released work item waits in
+it with no agent. The stage is reached both ways and both are correct, so it is in
+`STAGES_WHERE_EITHER_IS_ALLOWED` rather than here.
+
+**`READY` is the stage a released work item most resembles, and it sits here for that reason.** A
+ticket nobody has looked at and a change nobody has picked up yet are one situation, and the board
+already renders `READY` and `IDLE` as one column. `AWAITING_AGENT_PICKUP` is that same situation
+reached from the other end, so it cannot be forced onto this side: nine pickup nodes reach it with
+an agent named and one release reaches it without.
+"""
+
 STAGES_WITH_AN_AGENT = (
-    Stage.AWAITING_AGENT_PICKUP,
     Stage.IN_PROGRESS_BY_AGENT,
 )
+"""The stages where somebody is working on the work item and the stage must say who.
+
+**Only one stage, and that is the half of the biconditional that protects a run from believing it
+is doing something.** A work item in progress with no agent named is a run that thinks it is
+working; the release moves the work item out of here precisely so this can keep holding.
+"""
+
+STAGES_WHERE_EITHER_IS_ALLOWED = (
+    Stage.AWAITING_AGENT_PICKUP,
+)
+"""The stages where the work item may be held or unheld, because the stage is the handover itself.
+
+**`AWAITING_AGENT_PICKUP` is reached both ways, and both are correct.** Every pickup node — nine of
+them, one per discipline — asks for this stage *naming* the agent it is about to hand the work to,
+because that is how a run says which agent owns the work item from the moment it is claimed. A
+release asks for the same stage naming **nobody**, because a repair means the refusing agent lets
+go and the next agent has not been named yet: that choice is the supervisor's and it has not been
+made. Both arrive at "waiting to be picked up", and which of the two it is depends entirely on
+whether somebody has claimed it yet.
+
+**A third category rather than a relaxed second one.** Putting this stage on either side of the
+biconditional made one of the two moves illegal, and the failure arrived as
+`AWAITING_AGENT_PICKUP requires no agent, but aisdlc-dev-impl holds the work item` out of a run
+whose supervisor had just named its next agent. Naming the third case says what is true: this
+stage is the queue, and a queued work item has an agent on it only once somebody has claimed it.
+"""
 
 LEGAL_TRANSITIONS: dict[Stage, frozenset[Stage]] = {
     Stage.IDLE: frozenset({Stage.AWAITING_AGENT_PICKUP}),
-    Stage.AWAITING_AGENT_PICKUP: frozenset({Stage.IN_PROGRESS_BY_AGENT}),
+    # `AWAITING_AGENT_PICKUP` reaches itself so that a work item waiting in the queue can be
+    # **claimed**. Every pickup node asks for this stage naming the agent about to take the work,
+    # and after a release the work item is already in the stage held by nobody, so without this
+    # row the run that the supervisor just sent back died at the pickup with
+    # `AWAITING_AGENT_PICKUP cannot move to AWAITING_AGENT_PICKUP`. Claiming changes the holder and
+    # not the stage, which is what the stage means: the work is waiting to be picked up, and stops
+    # waiting when somebody picks it up. `_takes_the_work_item_from_the_holding_agent` allows it
+    # as written — it only refuses a move from one agent into *another agent's* hands, and a work
+    # item nobody holds is not held by anybody.
+    Stage.AWAITING_AGENT_PICKUP: frozenset(
+        {Stage.AWAITING_AGENT_PICKUP, Stage.IN_PROGRESS_BY_AGENT}
+    ),
     Stage.IN_PROGRESS_BY_AGENT: frozenset(
         {Stage.AWAITING_HUMAN_APPROVAL, Stage.AWAITING_AGENT_PICKUP}
     ),
@@ -44,9 +93,19 @@ def validate_state(work_item: WorkItem) -> None:
     performing it. Who is *allowed* to move the work item is a question about two
     moments in time, so it belongs to `transition` rather than here.
 
+    **One stage is exempt, and it is exempt because it is reached both ways.**
+    `AWAITING_AGENT_PICKUP` holds an agent when a pickup node has named it and holds none when a
+    refusing agent has released the work item and the supervisor has not yet said who works next.
+    Both are the queue, so the stage says nothing either way about who holds the work item and this
+    function says nothing about it. Every other stage is still on exactly one side of the
+    biconditional, and `test_every_stage_says_something_about_who_holds_the_work_item` checks that
+    the three lists between them cover every stage once.
+
     Silence means the work item holds. A violation raises `StateMachineError`
     naming what broke, so a reader learns why without instrumenting this module.
     """
+    if work_item.stage in STAGES_WHERE_EITHER_IS_ALLOWED:
+        return
     stage_without_an_agent = work_item.stage in STAGES_WITHOUT_AN_AGENT
     if stage_without_an_agent and work_item.agent is not None:
         raise StateMachineError(

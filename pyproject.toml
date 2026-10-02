@@ -100,14 +100,20 @@ ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
 # The default run is free: no network, no model, no credential, no browser, no container.
-# One marker for the tier that needs a real model, deselected here rather than skipped
-# inside a test, because a skip that prints its reason is a claim and a deselection is a
-# fact.
+#
+# **No marker and no `-m` filter, and that is a decision rather than an omission.** The engine
+# this repository was assembled from deselects its real tiers by marker, and this file used to
+# declare `e2e` and filter on it while **no test carried it** — so the filter deselected nothing
+# and the marker named a tier that did not exist. Here a real dependency makes a test **skip with
+# the reason printed** instead: three tests need a real model, a real `GITHUB_TOKEN` and a real
+# repository to file against, and a reader running `uv run pytest` is told which three and why.
+# A deselection is silent, and a tier that disappears without saying why is indistinguishable
+# from a tier with nothing in it.
+#
+# `tests/test_every_marker_this_repository_declares_is_carried_by_a_test.py` holds both halves of
+# that arrangement, and it is the reason the next marker cannot be declared and left unused.
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
-addopts = "-m 'not e2e' --strict-markers --import-mode=importlib"
-markers = [
-    "e2e: real agent, real model, real repository, opt-in",
-]
+addopts = "--strict-markers --import-mode=importlib"

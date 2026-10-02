@@ -25,8 +25,8 @@ from aisdlc.domain.repository import Repository
 from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
 from aisdlc.graph.clone_node import TheRepositoryHasNotBeenClonedYetError
 from aisdlc.graph.pickup_node import THE_DEVELOPER_PLANNING_AGENT
-from aisdlc.graph.supervise_a_repair import (
-    WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
+from aisdlc.graph.release_the_work_item_node import (
+    WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
 )
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.what_people_said_about_a_work_item import a_comment_was_left
@@ -112,7 +112,7 @@ def plan_the_change_in_this_run(state: AgentState, plan: PlanTheChange) -> Comma
         # repository does not collect is a plan that was wrong about the repository, and a
         # planner that reads the runner's `include` is the one that can fix it.
         return Command(
-            goto=WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
+            goto=WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
             update={WHAT_STOPPED_THIS_RUN: str(repairable)},
         )
 

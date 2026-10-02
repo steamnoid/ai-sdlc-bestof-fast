@@ -15,6 +15,10 @@ sorted so a reader comparing two runs is not reading an accident of declaration 
 
 `aisdlc-pr` is not here either, and for a different reason: §10 gives it four responsibilities
 and not one is a model call, so it has nothing to say and asking would buy a call to hear it.
+**What it does now say is not a note.** A delivery reads the checks on the commit being merged and
+then merges that commit, and both are announced in the run's own record rather than here — they
+are facts about a remote, not a judgement, and putting them on the card would put them in the one
+place a supervisor reads to find out what an *agent* concluded.
 """
 
 from __future__ import annotations

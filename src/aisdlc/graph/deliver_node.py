@@ -26,7 +26,10 @@ from aisdlc.domain.repository import Repository
 from aisdlc.domain.work_item import WorkItem
 from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
 from aisdlc.graph.clone_node import TheRepositoryHasNotBeenClonedYetError
-from aisdlc.graph.supervise_a_repair import WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR
+from aisdlc.graph.merge_node import WHERE_THE_SUITE_WENT_GREEN as _WHERE_THE_SUITE_WENT_GREEN
+from aisdlc.graph.release_the_work_item_node import (
+    WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
+)
 from aisdlc.store.what_a_run_records import a_run_was_delivered
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.github_create_branch import PushedBranch
@@ -42,7 +45,7 @@ from aisdlc.tools.our_own_runs import (
 )
 from aisdlc.tools.run_tests import SuiteOutcome
 
-WHERE_THE_RUN_IS_MARKED_DELIVERED = "mark_the_work_item_delivered"
+WHERE_THE_SUITE_WENT_GREEN = _WHERE_THE_SUITE_WENT_GREEN
 """The node this one hands to on success, named here because it is part of what this node does.
 
 **There is no edge out of this node, for the same reason there is none out of the node that
@@ -248,7 +251,7 @@ def open_the_delivery(
             _who_approved_the_verification(state),
         )
         return Command(
-            goto=WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR,
+            goto=WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
             update={WHAT_STOPPED_THIS_RUN: str(the_refusal)},
         )
 
@@ -297,7 +300,7 @@ def open_the_delivery(
     a_run_was_delivered(state["work_item"].work_item_id, the_pull_request.address)
 
     return Command(
-        goto=WHERE_THE_RUN_IS_MARKED_DELIVERED,
+        goto=WHERE_THE_SUITE_WENT_GREEN,
         update={"opened_pull_request": the_pull_request},
     )
 

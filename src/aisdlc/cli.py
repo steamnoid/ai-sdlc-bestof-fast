@@ -26,6 +26,9 @@ from aisdlc.application.a_run_being_assembled import (
 )
 from aisdlc.application.the_runs_this_process_is_holding import TheRunsThisProcessIsHolding
 from aisdlc.approval.approval_decision import ApprovalDecision
+from aisdlc.creative.a_repository_briefing_itself import (
+    filing_a_briefing_without_asking_anybody,
+)
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.work_item import a_work_item_commissioned_for_an_agent
@@ -125,6 +128,37 @@ def run(
     typer.echo("")
 
     _walk(the_graph, the_config, the_work_item_id, the_work_item, the_project_directory)
+
+
+@aisdlc.command()
+def brief(
+    repository: str = typer.Argument(..., help="owner/name, the way GitHub writes it.")
+) -> None:
+    """Brief this repository and file every opportunity it found, with no person in between.
+
+    **The other half of the product, and the half that writes to the outside world.** A briefing
+    is a reading operation and needs no credential; filing opens issues on somebody's board and
+    needs one. So this command refuses without `GITHUB_TOKEN` at the filing, and
+    `AISDLC_CREATIVE_MODE` has to say `on` before a briefing is read at all — the same rule the
+    board's button is behind.
+
+    **Every opportunity, and it says how many.** There is no picking here: a machine choosing which
+    of five findings were worth filing would be making that judgement without saying so, and a
+    person who wants to choose should press the button on the board instead.
+    """
+    _open_the_register()
+    the_repository = _a_repository_from(repository)
+
+    try:
+        the_filing = filing_a_briefing_without_asking_anybody(the_repository)
+    except Exception as it_could_not_file:
+        # **The sentence and not the exception, for the reason `run` has it.** A reader in a
+        # terminal is a person, and this one writes to somebody else's board: a traceback would
+        # tell them less about what is already on that board than the refusal does.
+        typer.echo(f"nothing was filed: {it_could_not_file}")
+        raise typer.Exit(code=2) from None
+
+    typer.echo(the_filing.in_words())
 
 
 def _walk(the_graph, the_config, work_item_id: str, the_work_item, the_project_directory) -> None:
