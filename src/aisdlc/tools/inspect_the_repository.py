@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.tools.filesystem_read import (
     PathNotInTheProjectError,
     a_path_in_the_project,
@@ -78,6 +79,19 @@ A_LIMIT_ON_A_SINGLE_FILE = 20_000
 # subject of the run — was not in the inspection.
 THE_SHARE_OF_THE_LIMIT_ONE_DIRECTORY_MAY_HOLD = 1 / 3
 
+# **What it shows of what the rule chose, measured rather than assumed.** In this repository the
+# rule chooses forty-two files and this limit shows nineteen; the other twenty-three are named in
+# the "not shown" list underneath, and none is dropped without appearing in one bucket or the
+# other. That is the design working as it is described — a truncated inspection says it was
+# truncated rather than looking complete.
+#
+# **Raised from 120 000 and then put back, because the measurement behind the raise was about the
+# wrong thing.** The rule's chosen set weighs a hundred and ninety thousand characters against a
+# hundred-and-twenty-thousand limit, which reads as an argument for raising it — and raising it to
+# two hundred and fifty thousand did bring ten more files in. It did not bring `run_command.py` in,
+# which is the file a real run had been refused for not having been shown, because that file was
+# never among the forty-two: the name rule had dropped it. A number changed for the wrong reason is
+# worse than a number left alone, so it is left alone and the request is what the inspection reads.
 A_LIMIT_ON_THE_WHOLE_INSPECTION = 120_000
 
 # What a file has to be called to be shown to a model reasoning about a repository. **A name and
@@ -241,7 +255,10 @@ def an_inspection_of(clone: ClonedRepository) -> str:
     return "\n\n".join(section for section in sections if section)
 
 
-def an_inspection_of_the_code(clone: ClonedRepository) -> str:
+def an_inspection_of_the_code(
+    clone: ClonedRepository,
+    what_the_run_is_about: CommissionedRequest | None = None,
+) -> str:
     """Everything `an_inspection_of` shows, plus the code, plus what was left out.
 
     **Two inspections and not one, because two consumers want different things and sharing one
@@ -264,7 +281,9 @@ def an_inspection_of_the_code(clone: ClonedRepository) -> str:
     """
     inside = clone.path
 
-    what_was_shown, what_was_not = _the_source_that_may_carry_risk(inside)
+    what_was_shown, what_was_not = _the_source_that_may_carry_risk(
+        inside, what_the_run_is_about
+    )
 
     sections = [
         _what_the_project_is(clone),
@@ -279,7 +298,9 @@ def an_inspection_of_the_code(clone: ClonedRepository) -> str:
     return "\n\n".join(section for section in sections if section)
 
 
-def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]:
+def _the_source_that_may_carry_risk(
+    inside: Path, what_the_run_is_about: CommissionedRequest | None
+) -> tuple[list[str], list[str]]:
     """The source files whose names say a change might touch them, and the names of the rest.
 
     **Chosen by name and capped by characters, in that order.** A name is the only signal
@@ -299,7 +320,7 @@ def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]
     what_was_shown: list[str] = []
     what_was_not: list[str] = []
 
-    for a_path in _every_source_file_in(inside):
+    for a_path in _every_source_file_in(inside, what_the_run_is_about):
         its_text = _the_text_of(inside, a_path)
 
         if its_text is None:
@@ -325,14 +346,40 @@ def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]
     return what_was_shown, what_was_not
 
 
-def _every_source_file_in(inside: Path) -> list[str]:
-    """Every source file, nearest the root first, skipping anybody else's code.
+def _every_source_file_in(
+    inside: Path, what_the_run_is_about: CommissionedRequest | None = None
+) -> list[str]:
+    """Every source file, what the run asked about first, skipping anybody else's code.
 
     **Sorted by depth and then by path, so two runs of one work item are comparable.** An
     inspection whose order came out of the file system would be a different question each time,
     and a report checked against it would be checked against a different thing.
+
+    **What the run asked about comes before both, and that is the only thing read here about
+    the work.** A real run was refused at its first gate for citing twenty-one test files and no
+    source file at all, while every one of its `key_components` named a symbol out of `src/` — and
+    measuring the selection said why nothing else could have found the file:
+
+    ```text
+    eligible files 169      selected by name 11      dropped by the name rule 158
+    ```
+
+    **The run's request contained the path in plain text and the file was one of the hundred and
+    fifty-eight the name rule dropped.** The rule is a list of words about security and about
+    builds, extended twice already for exactly this reason — once because a run was refused for
+    never having opened a `Dockerfile` — and the next extension would have been `command`, which
+    adds one file: the one that run was about. A selection that reads nothing about the work is a
+    guess dressed as a selection, so the request is read here and the request is the run's own
+    words.
+
+    **The check is a substring and not a parser, on purpose.** A file qualifies when the text of
+    the request contains its path exactly as the clone spells it. There is no pattern to get
+    wrong, no way to read a path that is not there, and no way for a request to name a file that
+    does not exist — the file has to have been found by the walk to be named at all.
     """
-    found: list[tuple[int, str]] = []
+    what_they_asked_for = _the_words_of(what_the_run_is_about)
+
+    found: list[tuple[int, int, str]] = []
 
     for a_path in inside.rglob("*"):
         if not a_path.is_file():
@@ -349,15 +396,36 @@ def _every_source_file_in(inside: Path) -> list[str]:
             its_name not in FILES_NAMED_WITHOUT_AN_EXTENSION
         ):
             continue
+
+        its_path_as_written = str(a_path.relative_to(inside))
+        the_run_asked_for_it = its_path_as_written in what_they_asked_for
+
         if not (
-            _it_lives_where_tests_live(its_parts)
+            the_run_asked_for_it
+            or _it_lives_where_tests_live(its_parts)
             or any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER)
         ):
             continue
 
-        found.append((len(its_parts), str(a_path.relative_to(inside))))
+        found.append((0 if the_run_asked_for_it else 1, len(its_parts), its_path_as_written))
 
-    return [a_path for _, a_path in sorted(found)]
+    return [a_path for _, _, a_path in sorted(found)]
+
+
+def _the_words_of(what_the_run_is_about: CommissionedRequest | None) -> str:
+    """The request as one piece of text, or nothing at all when nobody said what the run was for.
+
+    **The title and the body, and not `filed_as`.** The filing is where a reader goes for the rest
+    of a conversation and it is `None` for the ordinary case of somebody saying it out loud, so a
+    run commissioned from a filing has the same words as one commissioned from a sentence.
+
+    **`None` is an honest empty string rather than a default worth having.** Four of the five
+    stages are handed no request today, and a stage that is not told what the run is about gets
+    the selection the name rule alone produces — which is what it got before any of this.
+    """
+    if what_the_run_is_about is None:
+        return ""
+    return f"{what_the_run_is_about.title}\n{what_the_run_is_about.body}"
 
 
 def _it_lives_where_tests_live(its_parts: tuple[str, ...]) -> bool:

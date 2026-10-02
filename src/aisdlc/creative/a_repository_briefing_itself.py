@@ -227,7 +227,11 @@ def a_repository_briefed_itself(
 
     the_briefing = a_briefing or the_briefing_using_the_configured_model()
     the_report = the_briefing(
-        the_clone, repository, what_the_environment_allows(), what_was_already_tracked
+        the_clone,
+        repository,
+        None,
+        what_the_environment_allows(),
+        what_was_already_tracked,
     )
 
     _the_briefing_was_said(the_briefing_id, repository, the_report)

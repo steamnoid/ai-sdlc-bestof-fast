@@ -27,6 +27,7 @@ from aisdlc.agents.security_report import (
     SecurityReport,
 )
 from aisdlc.agents.security_report_answer import SecurityReportAnswer
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
 from aisdlc.llm.correction_budget import (
@@ -100,7 +101,10 @@ def the_prompt_to_inspect_for_security_risk(
 
 
 def inspect_for_security_risk(
-    clone: ClonedRepository, repository: Repository, model: BaseChatModel
+    clone: ClonedRepository,
+    repository: Repository,
+    what_the_run_is_about: CommissionedRequest | None,
+    model: BaseChatModel,
 ) -> SecurityReport:
     """The security report for a repository this run cloned.
 
@@ -111,7 +115,7 @@ def inspect_for_security_risk(
     severity and an empty report are all three the same event to the loop — one correction,
     the reason shown, the budget bounds it.
     """
-    inspection = an_inspection_of_the_code(clone)
+    inspection = an_inspection_of_the_code(clone, what_the_run_is_about)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()
@@ -170,7 +174,7 @@ def _what_was_examined(inspection: str) -> str:
 
 
 def the_security_analyst_using_the_configured_model() -> Callable[
-    [ClonedRepository, Repository], SecurityReport
+    [ClonedRepository, Repository, CommissionedRequest | None], SecurityReport
 ]:
     """The real `aisdlc-sec-analyze`: the model the environment names, asked about a clone.
 
@@ -188,10 +192,15 @@ def the_security_analyst_using_the_configured_model() -> Callable[
     """
 
     def analysing(
-        clone: ClonedRepository, repository: Repository,
+        clone: ClonedRepository,
+        repository: Repository,
+        what_the_run_is_about: CommissionedRequest | None,
     ) -> SecurityReport:
         return inspect_for_security_risk(
-            clone, repository, a_model_for(a_configuration_from_the_environment())
+            clone,
+            repository,
+            what_the_run_is_about,
+            a_model_for(a_configuration_from_the_environment()),
         )
 
     return analysing

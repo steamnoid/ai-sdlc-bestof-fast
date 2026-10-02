@@ -162,7 +162,7 @@ def analyze_the_repository(
     chance to say less. One correction is spent on telling it exactly that, and the run
     raises the refusal rather than returning a proposal nobody can approve.
     """
-    inspection = an_inspection_of_the_code(clone)
+    inspection = an_inspection_of_the_code(clone, request)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()

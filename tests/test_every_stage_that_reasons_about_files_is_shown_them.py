@@ -85,3 +85,57 @@ def test_no_stage_reasons_about_a_file_it_was_not_shown() -> None:
         "evidence list will refuse the run for it. That is what happened to the requirements "
         "stage on the first self-run."
     )
+
+
+def _how_many_arguments_the_stage_hands_the_inspection(a_stage: object) -> int:
+    """How many arguments a stage gives the inspection, read from its own source by parsing it.
+
+    **Counted and not checked for the request by name**, because a stage that hands the inspection
+    one argument and a stage that hands it two differ in a way a reader of the signature cannot
+    miss but a keyword search can be satisfied by: a test looking for the word `requested` finds it
+    in the signature of all five, including the one that never passes it.
+    """
+    the_source = Path(a_stage.__file__).read_text(encoding="utf-8")  # type: ignore[attr-defined]
+    the_calls = [
+        a_node
+        for a_node in ast.walk(ast.parse(the_source))
+        if isinstance(a_node, ast.Call)
+        and isinstance(a_node.func, ast.Name)
+        and a_node.func.id == "an_inspection_of_the_code"
+    ]
+    assert len(the_calls) == 1, (
+        f"{a_stage.__name__} calls an_inspection_of_the_code {len(the_calls)} times, so there is "
+        "no single call to count"
+    )
+    return len(the_calls[0].args)
+
+
+def test_every_stage_is_told_what_the_run_is_about() -> None:
+    """A stage handed no request gets the selection the name rule alone produces, silently.
+
+    **The same shape as the rule above it, one level down, and the reason it is a separate test.**
+    Every stage now takes the request and passes it on, because a run about
+    `src/aisdlc/tools/run_command.py` was refused at its first gate for citing twenty-one test
+    files and no source file — having been shown exactly that, because `run_command.py` is one of
+    the hundred and fifty-eight files the name rule drops out of a hundred and sixty-nine
+    eligible ones. The request contained the path in plain text.
+
+    **One stage taking the parameter and not passing it would look identical from outside.** Five
+    signatures would each say `what_the_run_is_about: CommissionedRequest | None`, one call would
+    pass it and four would not, and the result would be four stages reasoning from a repository
+    without their subject in it — which is the exact failure this file exists for, arrived at
+    through a different door. Counting arguments is what can tell the difference, and a search
+    for the parameter's name cannot.
+    """
+    stages_handed_nothing = [
+        a_stage.__name__
+        for a_stage in A_STAGE_THAT_REASONS_ABOUT_WHAT_A_REPOSITORY_CONTAINS
+        if _how_many_arguments_the_stage_hands_the_inspection(a_stage) < 2
+    ]
+
+    assert not stages_handed_nothing, (
+        f"{', '.join(stages_handed_nothing)} takes the request and does not pass it to the "
+        "inspection. A stage told nothing about the run is handed a selection made only from a "
+        "list of words in file names, which is how a run about run_command.py was handed "
+        "twenty-one test files and no source file and refused for writing the truth"
+    )

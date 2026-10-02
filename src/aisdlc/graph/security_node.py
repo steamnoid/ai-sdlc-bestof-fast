@@ -21,12 +21,15 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from aisdlc.agents.security_report import SecurityReport
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.agent_state import AgentState
 from aisdlc.graph.clone_node import TheRepositoryHasNotBeenClonedYetError
 from aisdlc.tools.github_clone_repository import ClonedRepository
 
-InspectForSecurityRisk = Callable[[ClonedRepository, Repository], SecurityReport]
+InspectForSecurityRisk = Callable[
+    [ClonedRepository, Repository, CommissionedRequest | None], SecurityReport
+]
 
 THE_ARTIFACT_THE_SECURITY_ANALYST_PRODUCES = "SecurityReport"
 ITS_FIRST_VERSION = 1
@@ -56,7 +59,9 @@ def inspect_for_security_risk_in_this_run(
         )
 
     return {
-        "security_report": inspect(clone, state["work_item"].repository),
+        "security_report": inspect(
+            clone, state["work_item"].repository, state["work_item"].requested
+        ),
         "presented_artifact_id": THE_ARTIFACT_THE_SECURITY_ANALYST_PRODUCES,
         "presented_artifact_version": ITS_FIRST_VERSION,
     }

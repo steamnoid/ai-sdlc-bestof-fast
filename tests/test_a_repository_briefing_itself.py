@@ -184,7 +184,7 @@ def _the_seams_a_real_run_would_not(
         )
 
     def briefing(
-        clone, repository, how_many: int = 5, what_is_already_tracked=()
+        clone, repository, what_the_run_is_about, how_many: int = 5, what_is_already_tracked=()
     ) -> TheOpportunitiesThisRepositoryOffers:
         return the_report
 

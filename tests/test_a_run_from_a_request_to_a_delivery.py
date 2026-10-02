@@ -152,7 +152,9 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
         what_it_expects_next="the next agent reads what this one found",
     )
 
-    def discover(clone, repository) -> tuple[DiscoveryReport, DiscoveryAnswer]:
+    def discover(
+        clone, repository, what_the_run_is_about
+    ) -> tuple[DiscoveryReport, DiscoveryAnswer]:
         # **The answer holds paths and the report holds links, and that is the production split.**
         # A model is given the paths it concluded something from and the address is derived from
         # the repository, because a model asked for a link will name a host it likes. So the fake
@@ -197,7 +199,7 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
         return QaPlan(**the_found), QaPlanAnswer(judged=the_judged, **the_found)
 
     def describe_the_architecture(
-        clone, repository
+        clone, repository, what_the_run_is_about
     ) -> tuple[ArchitectureReport, ArchitectureReportAnswer]:
         the_found = {
             "findings": ["one module, no boundaries drawn yet"],
@@ -209,7 +211,7 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
             ArchitectureReportAnswer(judged=the_judged, **the_found),
         )
 
-    def inspect_for_security(clone, repository) -> SecurityReport:
+    def inspect_for_security(clone, repository, what_the_run_is_about) -> SecurityReport:
         # **An account and no finding, never an empty report.** A report with neither is refused
         # by the artifact's own rule, because a reader cannot tell a repository that was
         # examined and found clean from one no analyst ever looked at.

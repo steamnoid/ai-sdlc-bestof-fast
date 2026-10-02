@@ -755,13 +755,21 @@ def test_one_directory_cannot_spend_the_whole_inspection() -> None:
     grew. The property is asserted rather than the fix, so that whichever way it is solved, this
     keeps holding.
 
-    **What this does not claim, because it cannot be true at this limit.** `run_command.py` stays
-    absent after the quota and will stay absent while one hundred and thirty-six source files do
-    not fit in one hundred and twenty thousand characters. That is a capacity limit, not a
-    selection rule, and no ordering fixes it — the honest answers are a request-aware inspection
-    or a larger limit, and both are decisions about the system rather than about a sort. The
-    property kept here is the one that was broken and is achievable: **no one directory spends
-    the whole inspection.**
+    **The quota fixed the crowding and the diagnosis underneath it was still wrong.** I measured
+    what the whole eligible set weighs, believing the answer would be "a request-aware inspection
+    is too big to build":
+
+    ```text
+    src      715947 chars        tests 152214 chars        eligible 868182 chars
+    eligible files 169      selected by name 11
+    ```
+
+    **One hundred and sixty-nine files eligible, eleven selected** — and the file the run was about
+    was among the one hundred and fifty-eight the name rule dropped. `run_command.py` was never a
+    candidate at all, so no limit and no ordering ever excluded it; the thing that excluded it is a
+    keyword list, and the refused run's own request contained the path in plain text. That is the
+    defect, and it is in `test_a_file_the_request_names_is_shown_even_though_its_name_says_nothing`
+    below rather than here.
 
     **This repository and not the fixture beside it**, because the first version of this test
     asked the three-file fixture for a file under `src/` and the fixture has no `src/` at all — a
@@ -798,3 +806,80 @@ def _what_the_inspection_showed(an_inspection: str) -> list[str]:
         for a_line in an_inspection.splitlines()
         if a_line.startswith("## ")
     ]
+
+
+def test_a_file_the_request_names_is_shown_even_though_its_name_says_nothing() -> None:
+    """The run's own request contained the path in plain text, and the file was still not shown.
+
+    A real run was refused at its first gate — `DiscoveryReport` cited twenty-one test files and no
+    source file at all, while every one of its `key_components` named a symbol out of `src/` — and
+    the gate was right: the agent had been shown exactly that. **The run's subject was
+    `src/aisdlc/tools/run_command.py`, its request said so in plain text, and measuring the
+    selection showed why nothing else could find it:**
+
+    ```text
+    eligible files 169      selected by name 11      dropped by the name rule 158
+    ```
+
+    **A hundred and fifty-eight files the name rule drops, including the file the run was about.**
+    The rule is a list of words about security and about builds — it has been extended twice for
+    exactly this reason, once for a `Dockerfile` a run was refused for never having opened — and
+    every extension is a bet that this time the next work item will be about one of these. The
+    third one would have been `command`, which adds exactly one file: the one this run was about.
+
+    **So this is not a keyword problem and cannot be fixed by a keyword.** A selection that reads
+    nothing about the work is a guess dressed as a selection, and this repository's answer is that
+    the request is already in the state. A file whose path the request contains comes first, ahead
+    of the depth order and ahead of the name rule — not exempt from the limit, because the limit is
+    what stops a repository becoming a paste, but first in the queue for it.
+
+    **The middle assertion is the one that makes this test mean anything.** Without it, a green run
+    could be a green run because some future keyword happened to match, and the test would then be
+    asserting its own luck. It holds that no word in the list matches this file's name, so the name
+    rule cannot have chosen it and its presence can only be the request's doing.
+    """
+    from aisdlc.domain.commissioned_request import CommissionedRequest
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+    from aisdlc.tools.inspect_the_repository import (
+        WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER,
+        an_inspection_of_the_code,
+    )
+
+    the_repository_itself = ClonedRepository(
+        path=Path(__file__).resolve().parents[1], ref="main", commit="0" * 40
+    )
+    the_path_the_refused_run_was_about = "src/aisdlc/tools/run_command.py"
+    the_request_that_named_it = CommissionedRequest(
+        title="Enforce the trust boundary of run_command",
+        body=(
+            "Enforce the trust boundary of "
+            f"{the_path_the_refused_run_was_about}. FOUR DECISIONS, all binding."
+        ),
+    )
+
+    its_name = Path(the_path_the_refused_run_was_about).name.lower()
+    assert not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER), (
+        f"{the_path_the_refused_run_was_about} is the file a real run was refused for not having "
+        f"been shown, and its name now matches the word list anyway — so a green run would be a "
+        f"green run because a keyword happened to be added, and this test would be asserting its "
+        f"own luck. Its name is not meant to say anything; the request is"
+    )
+
+    shown_without_the_request = _what_the_inspection_showed(
+        an_inspection_of_the_code(the_repository_itself, None)
+    )
+    shown_with_the_request = _what_the_inspection_showed(
+        an_inspection_of_the_code(the_repository_itself, the_request_that_named_it)
+    )
+
+    assert the_path_the_refused_run_was_about not in shown_without_the_request, (
+        f"{the_path_the_refused_run_was_about} is already selected without being asked for, so the "
+        f"assertion below cannot be what is being proved. The name rule would then not be the "
+        f"defect it is being blamed for"
+    )
+
+    assert the_path_the_refused_run_was_about in shown_with_the_request, (
+        f"the request names {the_path_the_refused_run_was_about} in plain text and the inspection "
+        f"does not show it. It showed {len(shown_with_the_request)} files. A run is handed an "
+        f"inspection of a repository it is about, and the subject of the run is not in it"
+    )
