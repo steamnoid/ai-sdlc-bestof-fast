@@ -215,6 +215,9 @@ NOBODY_WHO_IS_ROOT = 0
 DOCKER = "docker"
 SECONDS_AN_INSTALL_MAY_TAKE = 900
 SECONDS_A_SUITE_MAY_TAKE = 1800
+# A listing is `--collect-only`: the same import graph as a run and none of the test bodies,
+# so it is bounded generously and for the same reason the install is.
+SECONDS_A_LISTING_MAY_TAKE = 600
 
 # Read out of a repository's Dockerfile rather than remembered. A guess here produces
 # failures that belong to this system and are reported as the repository's tests failing.
@@ -332,6 +335,23 @@ class SuiteOutcome(BaseModel):
     passed: bool
     dependencies_installed: bool
     output: str
+    what_it_collected: str = ""
+    """What this runner said it collects, in its own words, when it was asked.
+
+    **A second field because a suite printing its own output and a runner listing its files are
+    two questions asked at two moments, and neither answers the other.** `pytest -q` prints nine
+    dots and a percentage — the run happened and the report names no file at all, so a check
+    reading `output` has nothing to read and either refuses every correct change or passes every
+    uncollected one. Six pull requests on this machine were opened by a run and the best documented
+    one delivered two test files into a directory its target's runner never collects; its report
+    said the suite passed before the change and passed after it, and both were true.
+
+    **So the runner is asked, and the answer travels with the result rather than being left at
+    the stage that happened to ask first.** The planning stage already asks — that is what
+    `announcement_command` is — and the answer used to be used for planning and then thrown away,
+    which left verification guessing from dots. Empty when nothing was asked, and a caller that
+    needs the listing says so rather than reading `output` and hoping.
+    """
 
 
 def the_checkout_only_mount(checkout: str) -> dict[str, str]:
@@ -689,12 +709,20 @@ def the_tests_in(
             output=_what_a_run_said(installation),
         )
 
+    # **Asked before the suite, because the suite's own output cannot answer this and the answer
+    # is what makes the suite's report readable.** `--collect-only` is cheap next to a run and
+    # this is the one question a container can answer that a report of dots cannot.
+    what_the_runner_collects = _a_container(
+        the_run.announcement_command, SECONDS_A_LISTING_MAY_TAKE
+    )
+
     suite = _a_container(the_run.suite_command, SECONDS_A_SUITE_MAY_TAKE)
     return SuiteOutcome(
         exit_code=suite.exit_code,
         passed=suite.exit_code == 0,
         dependencies_installed=True,
         output=_what_a_run_said(suite),
+        what_it_collected=_what_a_run_said(what_the_runner_collects),
     )
 
 

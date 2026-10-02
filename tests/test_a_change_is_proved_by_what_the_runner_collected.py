@@ -98,3 +98,64 @@ def _a_suite_saying(what_it_said: str):
         output=what_it_said,
         dependencies_installed=True,
     )
+
+
+def test_a_suite_that_named_no_file_is_proved_by_the_listing_the_runner_gave() -> None:
+    """**The dots case, and it is the case that has no answer anywhere in the suite's output.**
+
+    This is the third test's scenario completed rather than abandoned: a report of nine dots and a
+    percentage names nothing, so the only witness left is the listing the runner was already asked
+    for. **That listing is asked at planning time and thrown away**, because `SuiteOutcome` has
+    nowhere to put it — and the stage that needs it is the verification, which runs later.
+    """
+    the_suite = _a_suite_that_collected(
+        what_the_suite_said="." * 9 + " " * 56 + "[100%]\n",
+        what_it_collected=(
+            "tests/test_the_trust_boundary_of_run_command.py::test_the_checkout_is_a_place\n"
+            "tests/test_the_trust_boundary_of_run_command.py::test_it_is_not_a_string_prefix\n"
+            "\n2 tests collected in 0.04s\n"
+        ),
+    )
+
+    assert the_suite.output.find(A_TEST_THE_PLAN_NAMED) == -1, (
+        "this fixture is only the interesting case while the suite output names nothing"
+    )
+    assert the_tests_the_suite_never_ran([A_TEST_THE_PLAN_NAMED], the_suite) == [], (
+        "the runner collected this test and said so, and the check called it unrun. The answer was "
+        "asked once, at planning time, and thrown away"
+    )
+
+
+def test_a_suite_whose_listing_omits_a_test_still_refuses_it() -> None:
+    """**The listing has to be able to say no, or it is not a witness.**
+
+    This is the hollow pull request restated against the one mechanism that could have caught it:
+    a test the runner never collected is not evidence of anything, whatever the suite's exit code
+    says, and this is the only test here that says the check can fail.
+    """
+    the_suite = _a_suite_that_collected(
+        what_the_suite_said="." * 9 + " " * 56 + "[100%]\n",
+        what_it_collected="tests/test_something_else.py::test_unrelated\n\n1 test collected\n",
+    )
+
+    assert the_tests_the_suite_never_ran([A_TEST_THE_PLAN_NAMED], the_suite) == [
+        A_TEST_THE_PLAN_NAMED
+    ]
+
+
+def _a_suite_that_collected(what_the_suite_said: str, what_it_collected: str):
+    """A suite result that carries both the run's words and the listing the runner gave.
+
+    **Two fields because there are two facts.** What a suite printed and what it collects are
+    different questions, asked at different moments, and collapsing them is how a check ends up
+    scraping dots.
+    """
+    from aisdlc.tools.run_tests import SuiteOutcome
+
+    return SuiteOutcome(
+        exit_code=0,
+        passed=True,
+        dependencies_installed=True,
+        output=what_the_suite_said,
+        what_it_collected=what_it_collected,
+    )

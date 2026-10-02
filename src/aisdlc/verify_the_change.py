@@ -206,9 +206,17 @@ def the_tests_the_suite_never_ran(
     **Only the suite after the change is asked**, in the caller. A file that ran before the
     change is not evidence about the change.
     """
+    # **The listing first, and the report second — in that order, for a reason.** A listing is
+    # the runner naming the files it will open; a report is what it printed while opening them.
+    # On a toolchain whose report names no file at all — `pytest -q` prints dots — the report can
+    # answer nothing, and a check that consults it first is a check that refuses every correct
+    # change or waves through every uncollected one. Both are read because both exist, and the
+    # listing does not exist unless the runner was asked, which is the runner's business.
+    what_the_runner_says = "\n".join((the_suite.what_it_collected, the_suite.output))
+
     the_never_run: list[str] = []
     for a_test_the_plan_named in the_tests_the_plan_named:
-        if not _the_suite_mentioned(the_suite.output, a_test_the_plan_named):
+        if not _the_suite_mentioned(what_the_runner_says, a_test_the_plan_named):
             the_never_run.append(a_test_the_plan_named)
     return the_never_run
 
