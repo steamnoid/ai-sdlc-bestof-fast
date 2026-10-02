@@ -137,9 +137,9 @@ passes.
 `src/aisdlc/agents/architecture_report.py` — `findings`, `modules`, `dependencies`, `boundaries`,
 `risks`.
 
-**At least one field must say something, or this is a fault and not a report.** A repository can be
-small enough to have no architectural risk, and the honest report says so rather than inventing a
-coupling to describe.
+**At least one field must say something, and `modules` is the one that cannot honestly be empty.**
+A repository can have no architectural risk and the report says so; no repository has zero modules,
+so `modules: []` is a failure to answer rather than an answer.
 
 ### `SecurityReport`
 
