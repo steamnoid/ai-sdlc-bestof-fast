@@ -37,6 +37,7 @@ import pytest
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_create_pull_request import AnOpenedPullRequest
 from aisdlc.tools.the_suite_went_green import (
+    THE_SETTING_NAMING_THE_WAIT,
     TheChecksCouldNotBeReadError,
     TheSuiteHasNotFinishedYetError,
     TheSuiteHasNotRunYetError,
@@ -155,8 +156,26 @@ def test_a_failing_check_is_refused_and_named() -> None:
     )
 
 
-def test_a_check_still_running_is_refused_and_is_never_read_as_green() -> None:
-    """A suite in progress has no verdict, and no verdict is not a green light."""
+def test_a_check_still_running_is_refused_after_waiting_and_is_never_read_as_green(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A suite in progress has no verdict, and no verdict is not a green light.
+
+    **This test used to say the opposite about the first half, and a real run is why it changed.**
+    It asserted that a check in `in_progress` is *refused* — which is true of the verdict and false
+    of the ending. A run that opened a real pull request on `steamnoid/wellbeing-tracker-public`
+    was refused here because the suite had been `queued` for seconds:
+
+        TheSuiteHasNotFinishedYetError: 'suite' concluded 'no conclusion at all, only
+        {"name": "suite", ... "status": "queued", "conclusion": null, ...
+
+    **Every real repository's checks take minutes**, so refusing on the first `queued` means this
+    tool can never reach the commit it was written to reach. A check that has not started is now
+    waited out, with a ceiling — and **the half that matters here is untouched**: a check with no
+    verdict is still never read as green, and a ceiling of zero makes this refusal immediate, which
+    is the behaviour a deployment that states no wait at all asked for.
+    """
+    monkeypatch.setenv(THE_SETTING_NAMING_THE_WAIT, "0")
     a_client, _ = _a_github_answering([WHEN_THE_SUITE_WENT_GREEN, WHEN_THE_SUITE_IS_RUNNING])
 
     with pytest.raises(TheSuiteHasNotFinishedYetError):
