@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 
 from aisdlc.agents.architecture_report import ArchitectureReport
 from aisdlc.agents.architecture_report_answer import ArchitectureReportAnswer
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.agent_state import AgentState
 from aisdlc.graph.clone_node import TheRepositoryHasNotBeenClonedYetError
@@ -28,7 +29,7 @@ from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.what_people_said_about_a_work_item import a_comment_was_left
 
 AnalyzeTheArchitecture = Callable[
-    [ClonedRepository, Repository],
+    [ClonedRepository, Repository, CommissionedRequest | None],
     tuple[ArchitectureReport, ArchitectureReportAnswer],
 ]
 
@@ -59,7 +60,9 @@ def analyze_the_architecture_in_this_run(
             "node."
         )
 
-    report, what_the_analyst_concluded = analyze(clone, state["work_item"].repository)
+    report, what_the_analyst_concluded = analyze(
+        clone, state["work_item"].repository, state["work_item"].requested
+    )
 
     a_comment_was_left(
         state["work_item"],

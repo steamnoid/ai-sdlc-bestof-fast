@@ -151,14 +151,31 @@ def read_the_open_issues(
 
 
 HOW_MANY_SHARED_WORDS_MEAN_THE_SAME_WORK = 2
-"""Two meaningful words in common, which is low enough to catch a re-worded duplicate.
+"""Fewest meaningful words two titles must share before either is about the other's work.
 
-**Two, and not one, because one is almost always a coincidence** in a backlog that has any size.
-**And not three**, because the honest phrasing of a duplicate is often shorter than the original —
-"Session cookie never expires" against "The session cookie has no expiry, so a browser keeps it
-forever" shares two of three meaningful words and would slip past a threshold of three. That last
-one is a judgement about the cost of a duplicate against the cost of a dropped proposal, and the
-cost of a dropped proposal is paid by somebody who never hears about the opportunity.
+**One is almost always a coincidence** in a backlog of any size, so one is never enough.
+"""
+
+WHAT_FRACTION_OF_THE_SHORTER_TITLE_MUST_BE_SHARED = 0.6
+"""How much of the shorter title must be in common, which is the rule that actually decides it.
+
+**A count alone is not enough, and a real filing proved it the same day it was written.** This
+was a count of two, and it refused a genuinely different issue: "Teach `shell.run_tests` a Python
+repository" against an open issue about the trust boundary of `shell.run_command`. Different
+files, different problems, one shared *vocabulary* — and `run` and `tests` are half the words in
+this codebase's file names, so two shared words meant nothing.
+
+**A fraction fixes that, because a coincidence cannot make up a majority.** The two above share
+`run` and `tests` out of nine meaningful words in the shorter title — a quarter, and no reason to
+refuse. The real duplicate this rule exists for shares almost all of its shorter title: "Add an
+expiry to the session cookie" against "The session cookie has no expiry" is three of three.
+
+**Both conditions, and neither alone.** A fraction alone would let a one-word title be refused
+because a single word matched. A count alone is what failed. Together, the words have to be there
+*and* have to be most of the title they came from.
+
+**And the cost is deliberately on the lenient side**, because it is asymmetric: a duplicate is
+noise in somebody's queue, and a dropped opportunity is work nobody ever hears about.
 """
 
 
@@ -167,13 +184,12 @@ def the_issues_listed_as_tracked(
 ) -> None:
     """Raise when an open issue is already about this work.
 
-    **The words that carry the meaning, not the words that overlap.** Titles for the same work
-    rarely match as text — "Add an expiry to the session cookie" against "The session cookie has
-    no expiry" shares three words out of five and four out of five, and shares them in a different
-    order. But "Add a test" and "Add a health endpoint" share one word out of three, and refusing
-    the second because of the first would make creative mode useless on any repository with a
-    backlog. So the comparison drops the words that appear in nearly every title and requires most
-    of what remains to be shared.
+    **The words that carry the meaning, not the words that overlap, and most of the shorter
+    title rather than a fixed count of them.** Titles for the same work rarely match as text —
+    "Add an expiry to the session cookie" against "The session cookie has no expiry" shares three
+    words out of five and four out of five, in a different order. The fraction is what makes that
+    a duplicate, and the count alone is what made two unrelated issues look like one; see
+    `WHAT_FRACTION_OF_THE_SHORTER_TITLE_MUST_BE_SHARED` for the filing that proved it.
     """
     the_words_in_this_one = _the_words_that_carry_meaning(what_is_proposed)
     if not the_words_in_this_one:
@@ -184,7 +200,15 @@ def the_issues_listed_as_tracked(
         if not the_words_in_that_one:
             continue
         the_shared = the_words_in_this_one & the_words_in_that_one
-        if len(the_shared) >= HOW_MANY_SHARED_WORDS_MEAN_THE_SAME_WORK:
+        if len(the_shared) < HOW_MANY_SHARED_WORDS_MEAN_THE_SAME_WORK:
+            continue
+
+        how_much_of_the_shorter_one_is_shared = len(the_shared) / min(
+            len(the_words_in_this_one), len(the_words_in_that_one)
+        )
+        if how_much_of_the_shorter_one_is_shared >= (
+            WHAT_FRACTION_OF_THE_SHORTER_TITLE_MUST_BE_SHARED
+        ):
             raise WorkAlreadyTrackedError(what_is_proposed, an_issue)
 
 

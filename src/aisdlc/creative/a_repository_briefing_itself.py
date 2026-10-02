@@ -25,7 +25,6 @@ opportunities so the board is not empty.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -50,6 +49,7 @@ from aisdlc.creative.is_creative_mode_on import (
 from aisdlc.creative.the_opportunities_this_repository_offers import (
     TheOpportunitiesThisRepositoryOffers,
 )
+from aisdlc.domain.a_name_nobody_has_used_for import a_name_nobody_has_used_for
 from aisdlc.domain.repository import Repository
 from aisdlc.store.the_record_of_a_run import a_note_was_left
 from aisdlc.store.what_a_run_records import something_the_run_said
@@ -174,16 +174,8 @@ def where_a_briefings_clone_lives(briefing_id: str) -> Path:
 
 
 def a_briefing_id_for(repository: Repository) -> str:
-    """A name for this briefing, from the repository and the moment, to the microsecond.
-
-    **Microseconds and not seconds, and the idempotence test is why.** The name is a directory
-    the clone is written into, and a briefing takes seconds rather than the twenty minutes a run
-    takes — so two briefings of one repository inside the same second landed in the same directory
-    and the second raised `DestinationNotEmptyError` on a directory it had made itself. A run's id
-    can be a second-resolution timestamp precisely because a run is slow; a briefing's cannot,
-    and the two ids are not interchangeable because they are not the same kind of thing.
-    """
-    return f"{repository.name}-{datetime.now(UTC):%Y%m%d-%H%M%S-%f}"
+    """A briefing's id. One builder, shared with the work item and the CLI."""
+    return a_name_nobody_has_used_for(repository, "briefed itself")
 
 
 def a_repository_briefed_itself(
@@ -235,7 +227,11 @@ def a_repository_briefed_itself(
 
     the_briefing = a_briefing or the_briefing_using_the_configured_model()
     the_report = the_briefing(
-        the_clone, repository, what_the_environment_allows(), what_was_already_tracked
+        the_clone,
+        repository,
+        None,
+        what_the_environment_allows(),
+        what_was_already_tracked,
     )
 
     _the_briefing_was_said(the_briefing_id, repository, the_report)

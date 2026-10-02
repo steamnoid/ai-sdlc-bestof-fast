@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 150 passed, 3 skipped, ~8s, no network, no model, no credential, no container
+uv run pytest -q     # 224 passed, 3 skipped, 8 deselected, ~14s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -654,6 +654,262 @@ work a team has already agreed to do, which is the exact failure this is for.
 **The limit, named.** The list is read once, at briefing time. An issue filed between the briefing
 and a person's pick is not in it.
 
+## This is the copy that builds itself, and what that cost
+
+**`ai-sdlc-bestof-fast` is frozen. This repository is where the work happens.** The original is a
+read-only reference; every change since is a pull request here.
+
+**The copy briefed itself and filed four issues on itself**, every one tagged with this system's
+own project name — which was the rule fixed the day before, after it was wrong for a week. Then a
+fifth: the runner is npm-only.
+
+**And the npm-only runner was the whole of the difficulty.** Three constants decided how any
+repository's suite is run — `("npm", "test")`, `("npm", "ci")` and a fallback image of
+`node:22-bookworm` — beside a comment saying that a repository whose suite is `pytest` has no such
+mode and that `a_listing_command_for_a_toolchain` was "where that question is asked and answered".
+**That function did not exist.** So a verification of any change to *this* repository installed
+nothing, ran nothing, went red, and the delivery refused it: nothing this system could change
+about itself was deliverable.
+
+**The image was already read out of the repository and the other three answers were not.** That
+inconsistency was the finding — "the toolchain is declared, not remembered" was true of one answer
+out of four. All four are now `HowThisRepositoryIsTested`, read together, because `pip install -e .`
+inside `node:22-bookworm` is not a configuration anybody chose; it is what you get when each answer
+has its own default and none of them has an owner.
+
+**The suite then had to be able to run in that container, and the reason it could not is the
+shape of the mount.** The container gets exactly one: the checkout. `npm ci` survives into the
+suite's container because `node_modules` lands **inside the repository**, on the mount. `pip
+install -e .` does not — it writes to the interpreter's site-packages, which is thrown away with
+the container, so the install exited 0 and the suite still said `No module named pytest`.
+
+**`uv` gives this away for free.** `uv sync` writes `.venv` inside the project, on the mount,
+exactly like `node_modules` — and `.venv/` was already in `.gitignore`. It also reads
+`[dependency-groups]`, which **pip does not**, so `langchain` (an extra) and `pytest` (the dev
+group) were never installed by the pip branch at all. That is the third declared toolchain, chosen
+by what the repository declares.
+
+**Three things the real run found, none of which were visible from the host:**
+
+| | |
+|---|---|
+| `uv` spells its cache flag `--cache-dir` | `--cache` was appended at the call site because npm was the only toolchain, and `uv` **refuses to start**: `tip: a similar argument exists` |
+| the `-slim` image has no `git` | 13 tests build a git repository in a fixture, so all 13 errored — not a smaller suite, a suite whose fixtures cannot run. `node:22-bookworm` is already non-slim, which is why the node path never hit this |
+| every toolchain was handed `/tmp/.npm` | `uv` was told to keep its cache in a directory named after another package manager. It works, and it is the sort of thing still there in three years |
+
+**The suite now runs here, in a container, green:** `76 passed, 3 skipped` on
+`ghcr.io/astral-sh/uv:python3.13-bookworm`, one mount, `--network=none`, no credential.
+
+**And then a run pointed at its own issue #4, and the policy refused it — correctly, and for the
+reason this repository already knows about.** Two gates in. The discovery report was approved with a
+reason that checked every claim against its own evidence list. The requirements gate refused, and
+the reason is worth quoting because it is the *inspection* bug from two nights ago wearing a
+different hat:
+
+> The artifact itself records that neither `src/aisdlc/tools/run_command.py` nor
+> `src/aisdlc/agents/inspect_for_security_risk.py` had its contents in the inspection, yet
+> requirements 3, 4, 6 and 7 state what those files catch, where the boundary is enforced, and
+> that nothing escapes the project directory — and criteria 2, 3 and 5 ask for tests whose
+> outcomes turn on a "permitted list" and a "project directory" that the same document lists as
+> undetermined.
+
+**So the same file contents were missing from a second stage's inspection.** It was fixed for
+discovery; the analysis stages were not checked. Both are now `an_inspection_of_the_code`, and a
+test reads every stage's source by parsing it and refuses any that is handed the shape instead —
+because **a guard that can be satisfied by a comment is the third of those this repository has
+had**, and the first two were written by me. **A model wrote requirements about two files
+nobody had read**, and a policy caught it by comparing what the artifact said it had seen against
+what it then asserted. That is the loop working: the refusal is the system defending itself.
+
+**The second run states the four answers the refusal asked for**, and got six gates in — then the
+implementer was refused for the other half of the same rule:
+
+> The plan names `test_a_command_whose_working_directory_leaves_the_root_by_traversal_is_refused`,
+> `test_a_directory_reached_through_a_symlink_that_resolves_outside_the_root_is_refused` … and that
+> is not fully applied is not a plan that was applied, and reporting it as applied is the one thing a
+> traceability chain must never do.
+
+**So: two runs, two gates refused, and in both cases the system refused itself correctly.** No pull
+request yet, and the honest count is zero. What the two refusals name is specific and both is
+wiring rather than architecture:
+
+| what stopped it | what it is |
+|---|---|
+| the analysis stages' inspection did not carry the files the requirements were about | the file-contents fix was made for **discovery** and never checked for the stages after it |
+| the implementer wrote some of the plan's files | `AnUnrunTestError` and `AWriteThatChangesNothingError` fired as designed; the run refused rather than delivering half a plan |
+
+**Two more runs after that, and each one advanced exactly one gate.**
+
+**Run three** had the requirements **approved** — the inspection fix worked — and was refused at
+the QA plan, which asked for two decisions to be recorded before the tests could be written: how
+the runner learns the project root, and whether the network flags belong in the change.
+
+**Run four** stated both, and got **seven gates in, every one approved, including the
+implementation plan**. The implementer wrote `run_command.py` and two new test files. The container
+verified them and came back with:
+
+```
+2 failed, 111 passed, 3 skipped
+```
+
+**And that is the closest this has come to a pull request: 111 passing is up from the 77 the
+repository started the run with, and the two failures are in a file the run itself wrote** —
+`tests/test_tool_clone_path_propagation.py::test_the_two_runners_are_given_the_same_directory`.
+So the system proposed a property, wrote a test for it, found it does not hold, and refused to
+deliver. **The policy refused the verification and no pull request was opened.**
+
+That last one is worth being precise about, because it is the whole thesis in one run: **a run
+that has already written the code is still not a delivery until the suite agrees**, and the suite
+here said no.
+
+**Run five** was refused at the requirements again, and this time for a claim that was simply
+false: it said the inspection had found neither `run_command.py` nor any test file, while asserting
+detailed facts about both. The first half was wrong. Checking it directly:
+
+```text
+src/aisdlc/tools/run_command.py: listed=True
+tests/test_a_python_repository_can_be_verified.py: listed=False
+```
+
+**The source file was there. Every test file was not, and the reason was that no test in this
+repository is named after a keyword.** The selection rule was *"does a word from a fixed list
+appear in this file's name"*, and a test is named after what it asserts — `a_python_repository_can_
+be_verified`, `a_card_never_names_a_framework_node_as_a_step`. Not one matched, so **the entire
+test suite of this repository had never been shown to any agent.** That is now fixed: a file under
+a test directory is selected by where it lives.
+
+**Run six**, with the tests visible, is the run that got furthest: **all five analysis gates
+approved** — discovery, requirements, QA plan, architecture, security — the first time the whole
+analysis chain has cleared in one run. The discovery report marked its own gaps honestly, naming
+`run_command.py` and the unseen test files as not shown rather than writing about them anyway.
+
+**Run seven** cleared the analysis chain again and reached a stage nothing before it had: the
+implementer. It refused on a rule that turned out to be wrong.
+
+The plan named seven tests the way a person writes them for `pytest`:
+
+```text
+tests/test_what_two_real_runs_found.py::test_the_checkout_is_a_place_and_not_a_string_prefix…
+```
+
+and the guard that ends a change compares what the plan named against the paths the implementer
+wrote. **`a.py::test_x` can never equal `a.py`**, so it refused naming all seven — whatever the
+implementer had done. `tests_to_add` is a list of strings and nothing checks a string is a path,
+so a model may be more specific than the field without anything objecting. That is the same shape
+as the Dockerfile finding, one level down: **the field is not what the model obeys.**
+
+The file part is now taken on both sides, because writing the file is what the plan asked for —
+and taking the node part from one side alone would let a plan claim `a.py::test_x` while the
+implementer wrote `b.py`. Comparing the file keeps the file the claim, which is what the trace
+says afterwards.
+
+**Run eight** cleared the analysis chain for the third time and was refused at the plan — on a
+file name, and this one was the operator's fault rather than the system's. The request had said
+*extend `tests/test_what_two_real_runs_found.py` rather than creating a parallel one*, which was
+right for the run before it and wrong for this one: that file is named after a past finding, so
+appending new tests to it made the plan look like it was naming work retrospectively.
+
+The gate's objection was correct and the instruction behind it was not, and the honest resolution
+is not to argue with the gate. A test belongs in a file named after the rule it asserts, which is
+the same convention every other test in this repository already follows and the one thing the
+operator's shortcut had quietly broken.
+
+**Run nine** is the first run to write, commit and verify a real change:
+
+```text
+f7c8d0f src/aisdlc/tools/run_command.py — 3 file(s) the approved plan named
+ src/aisdlc/tools/run_command.py                  | 150 ++++++--
+ tests/test_the_trust_boundary_of_run_command.py | 302 ++++++++++++++++++++
+ 3 files changed, 503 insertions(+), 35 deletions(-)
+```
+
+Seven gates, the plan approved, and the container suite came back **91 passed, 1 failed**. The
+gate refused, and named the failure exactly: three `cwd` values were handed to the OS across two
+`the_outcome_of` calls instead of two, so the two runners were not receiving the same resolved
+string.
+
+**It was the test double, and the code was right.** `subprocess.run` is implemented in terms of
+`subprocess.Popen`, so a test that patches **both** records every unwatched call twice and every
+watched call once — two calls, three values. Checked against the interpreter rather than believed:
+
+```text
+one subprocess.run call produced 1 Popen construction(s)
+```
+
+A double that double-counts is a double that lies, and it bought the most expensive false failure
+in this whole exercise: a working 503-insertion change stopped from being delivered by a counting
+artefact. **Patching `Popen` alone reaches both runners**, so one seam is enough.
+
+**Run ten**, told that, was refused at the requirements — and this is the best catch any gate has
+made here:
+
+> requirement 5 does not state what `may_run_only_inside=None` must do… the ambiguities list
+> records that same fail-open/fail-closed question as undetermined by a person, so **the one
+> decision a trust boundary turns on would be settled by the implementer and then confirmed by the
+> implementer's own test.**
+
+That is *an agent approving its own output is forbidden* arriving in a shape nobody had named: a
+test written by the implementer cannot be the authority on the behaviour it tests. The operator's
+instruction had left `None` unspecified, so the gate refused rather than let a model settle it
+twice. **A gate that argues with the operator is working; one that agrees because the operator
+phrased it agreeably is not.**
+
+The four decisions are now stated before the run starts: `None` permits any directory because no
+checkout was named, a breach raises a named error rather than returning an outcome, the root
+arrives as an argument and never from the environment, and the resolved directory is compared as
+the resolver returned it.
+**The gate also asked for something the request never did**, and it is worth keeping: the plan
+never stated *which boundary is being enforced, what input is untrusted, or what the check
+rejects*. A plan that adds a trust check without saying what it trusts is thin, and a name being
+acceptable is not the same as a plan being complete.
+**And then the run crashed, rather than being refused:**
+
+```text
+StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to
+aisdlc-dev-plan; a work item is released to a human, not to another agent
+```
+
+The verification was refused, the supervisor was asked what to repeat, and it answered *rewrite
+the plan*. That answer routes to `offer_the_work_item_to_the_planner`
+(`src/aisdlc/graph/supervise_a_repair.py:124`), which is `WHERE_THE_PLAN_IS_REWRITTEN`.
+
+**The route is the bug.** That path was only ever exercised after a *planning* refusal, where the
+holder is already `aisdlc-dev-plan` and handing it to the same agent is a no-op that works. After
+an *implementation* refusal the holder is `aisdlc-dev-impl`, so the planner's pickup asks for a
+second agent — and the state machine refuses, correctly and for the right reason. Nothing is wrong
+with the state machine here. **What is missing is a release: the work item has to be let go before
+another agent may take it**, and only the plan-after-a-plan-refusal path never needed one.
+
+This is the first defect in this whole exercise that is neither a prompt nor a model. It is
+Layer A, it is deterministic, and it is the last thing standing between five approved gates and a
+delivery.
+**And the two failures are the run disagreeing with its own instructions, which is the most
+interesting thing in it.** The request stated, as a decision to be recorded before anything was
+written:
+
+> The project root reaches the runner as an explicit named argument on the function that runs the
+> command, `may_run_only_inside`, of type `str | None` … it does not read an environment variable.
+
+What the run wrote reads `AISDLC_WHERE_COMMANDS_MAY_RUN` from `os.environ`. So **the confinement
+is implemented, correctly and carefully** — paths resolved on both sides, a string prefix
+explicitly refused because `/srv/checkout-2` starts with `/srv/checkout` — but it is wired the way
+the request told it not to be, and its own tests failed partly because of it.
+
+The second failure is a type: the test compares the recorded `cwd` against `str(...)` while the
+code hands `subprocess` a resolved path. Both work; only one of them is what the test said.
+
+**Both are one sentence long to fix, and neither was found by reading the code.** They were found
+by the suite the run wrote, in the container, which is the whole argument for a runner that can
+verify a repository at all.
+
+**And the duplicate rule refused a real issue the day it was written.** It asked to teach
+`shell.run_tests` a Python repository; the copy already had an open issue about the trust boundary
+of `shell.run_command`. Different files, different problems — and the rule fired anyway, because
+they shared `run` and `tests`, which are half the words in this codebase's file names. A count of
+two shared words cannot tell a coincidence from a duplicate in a vocabulary that dense. It is now
+a **fraction of the shorter title** — two of nine is a quarter, while the duplicate it exists for
+shares three of three.
+
 ## What is not built
 
 Stated rather than left to be discovered.
@@ -811,8 +1067,8 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships twenty-one test files, and each one is a
-  claim rather than a category:
+  end-to-end tests were not copied. This repository ships thirty-eight test files, and each one
+  is a claim rather than a category:
 
   | file | what it holds this repository to |
   |---|---|
@@ -837,6 +1093,23 @@ Stated rather than left to be discovered.
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
   | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
+  | `test_a_python_repository_can_be_verified.py` | that a Python repository's suite is run with pip and pytest rather than npm, and that its collection listing is read |
+  | `test_is_a_named_path_a_file_of_the_clone.py` | that a path an agent wrote is read the way a person wrote it — a link is not a path, a mention is not a citation, a lost leading dot is not a difference, and an abbreviation is not the file |
+  | `test_the_limit_is_named_for_what_it_bounds.py` | that the source limit is named for the source it bounds and not for a whole inspection it does not bound — and that the whole has no ceiling of its own, measured at 175,926 against 120,000 on a repository built for the purpose |
+  | `test_the_plan_says_what_it_plans_and_the_implementer_reads_it.py` | that a plan carries what the change makes, that the implementer is shown it — it is handed the plan and a checkout and no request — and that a sentence with no file named is not a plan |
+  | `test_a_plan_that_only_adds_a_file_is_a_plan.py` | that a plan whose only content is a file to add is a plan, and that the emptiness rule looks at every field the plan has rather than four of the five |
+  | `test_modules_is_not_an_optional_field_of_an_architecture_report.py` | that an architecture report naming no module is refused, because no repository has zero modules and an empty list is the analyst declining a question it was asked |
+  | `test_the_glossary_blesses_every_term_the_domain_defines.py` | that the glossary nine modules cite as the authority for their field names exists and names every term the domain defines and every artifact a gate rules on — written from the code and read back by a test |
+  | `test_a_real_container_asks_a_runner_what_it_collects.py` | that a real container, a real runner and this repository's own suite say which files will be opened — the only evidence here that the delivery path works, and it costs two and a half minutes |
+  | `test_two_neighbouring_agents_agree.py` | that two agents the pipeline runs back to back, both reasoning for real on one clone, do not contradict each other, and that the planner is handed the security report it answers |
+  | `test_a_change_is_proved_by_what_the_runner_collected.py` | that a change is proved by what the repository's own runner named it ran — and that a runner which names no files is a witness that could not speak, not one that said no |
+  | `test_the_planner_is_given_the_security_report_it_answers.py` | that the planning seam takes the approved `SecurityReport`, and that the node reads it out of the state and refuses when there is none rather than planning around the absence |
+  | `test_every_prompt_whose_answer_carries_a_path_says_how_to_name_one.py` | that all six prompts whose answer carries a file path tell the model a path is written from the root of the repository, and say it from one place so the six cannot drift |
+  | `test_a_work_item_id_is_a_name_nobody_has_used.py` | that a work item's id — a directory, a branch, a thread and an API key at once — is unique when two are commissioned for the same request in the same second |
+  | `test_no_test_leaves_the_register_open_at_a_file_that_is_deleted.py` | that one autouse fixture closes the register after every test, so no test can inherit another's handle at a `tmp_path` that has been deleted — and that the fixture is still autouse |
+  | `test_every_finding_is_held_to_saying_something.py` | that every finding this pipeline produces names the field it cannot leave empty, and that those fields exist on the model, so an empty artifact cannot be read as an answer |
+  | `test_every_declared_neighbouring_pair_has_a_case.py` | that every two agents the pipeline runs back to back have a pair test, and that the order those pairs are cut from is the router's own order rather than a list somebody typed |
+  | `test_every_stage_that_reasons_about_files_is_shown_them.py` | that no stage is handed a directory listing and then writes findings about files nobody in it has read |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Every one of the twenty-one is newer than the assembly this repository was cut

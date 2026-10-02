@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from aisdlc.agents.implement_the_plan import _the_file_a_test_is_written_into
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.tools.run_command import ACommand, CommandOutcome, the_outcome_of
 
@@ -41,6 +42,30 @@ class TheChangeWasNotCommittedError(Exception):
     """
 
 
+def the_paths_a_commit_must_stage(plan: ImplementationPlan) -> list[str]:
+    """Every path a commit for this plan has to stage, with any test name reduced to its file.
+
+    **A real run verified a change and then could not commit it.** `git add` was handed a pytest
+    node ID — `tests/x.py::test_y` names a test exactly, and is what the verifier needs — and git
+    wants the file, so it refused *after* the container suite had already run on both sides:
+
+        fatal: pathspec 'tests/x.py::test_y' did not match any files
+
+    **The node part comes off on the same rule the applied-change guard uses**, because it is the
+    same mistake in a second place: a field meant to hold a path holding a name for something
+    inside a path.
+
+    **And all three of a plan's lists are staged, where two were.** `files_to_add` was dropped
+    entirely, so a plan introducing a file this repository does not have yet — which is exactly
+    what a new test file is — would never be staged, and the verification would have passed over a
+    change the branch does not carry. A commit that records everything is the whole point of it.
+    """
+    return [
+        _the_file_a_test_is_written_into(path)
+        for path in [*plan.files_to_change, *plan.files_to_add, *plan.tests_to_add]
+    ]
+
+
 def a_commit_recording_the_change(
     clone_path: Path, plan: ImplementationPlan, what_the_change_is: str
 ) -> CommandOutcome:
@@ -50,7 +75,7 @@ def a_commit_recording_the_change(
     nobody can find in a list of four hundred, and the branch is the work item's own because
     the branch is the name the run delivers from.
     """
-    paths = [*plan.files_to_change, *plan.tests_to_add]
+    paths = the_paths_a_commit_must_stage(plan)
 
     for stage in (
         ACommand(

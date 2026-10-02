@@ -19,6 +19,8 @@ from aisdlc.agents.architecture_report import (
     EmptyArchitectureReportError,
 )
 from aisdlc.agents.architecture_report_answer import ArchitectureReportAnswer
+from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
 from aisdlc.llm.correction_budget import (
@@ -28,7 +30,7 @@ from aisdlc.llm.correction_budget import (
 from aisdlc.llm.llm_configuration import a_configuration_from_the_environment
 from aisdlc.llm.model_factory import a_model_for
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.inspect_the_repository import an_inspection_of
+from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
 
 THE_FIELDS_THE_ANSWER_MAY_NAME = (
     "findings",
@@ -87,13 +89,17 @@ def the_prompt_to_analyze_the_architecture(
         "rather than trimmed, because a conclusion this system did not ask for is one no\n"
         "human was ever shown.\n"
         "\n"
+        f"{the_rule_about_naming_a_file()}"
         f"Inspection of {repository.owner}/{repository.name}:\n"
         f"{inspection}"
     )
 
 
 def analyze_the_architecture(
-    clone: ClonedRepository, repository: Repository, model: BaseChatModel
+    clone: ClonedRepository,
+    repository: Repository,
+    what_the_run_is_about: CommissionedRequest | None,
+    model: BaseChatModel,
 ) -> tuple[ArchitectureReport, ArchitectureReportAnswer]:
     """The architecture report for a repository this run cloned.
 
@@ -106,7 +112,7 @@ def analyze_the_architecture(
     inspection can support, and the refusal is what tells it to say less. A run that
     exhausts the budget raises the last refusal, which is the thing worth showing a person.
     """
-    inspection = an_inspection_of(clone)
+    inspection = an_inspection_of_the_code(clone, what_the_run_is_about)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()
@@ -135,7 +141,8 @@ def analyze_the_architecture(
 
     raise last
 def the_architecture_analyst_using_the_configured_model() -> Callable[
-    [ClonedRepository, Repository], tuple[ArchitectureReport, ArchitectureReportAnswer]
+    [ClonedRepository, Repository, CommissionedRequest | None],
+    tuple[ArchitectureReport, ArchitectureReportAnswer],
 ]:
     """The real `aisdlc-arch-analyze`: the model the environment names, asked about a clone.
 
@@ -153,10 +160,15 @@ def the_architecture_analyst_using_the_configured_model() -> Callable[
     """
 
     def analysing(
-        clone: ClonedRepository, repository: Repository,
+        clone: ClonedRepository,
+        repository: Repository,
+        what_the_run_is_about: CommissionedRequest | None,
     ) -> tuple[ArchitectureReport, ArchitectureReportAnswer]:
         return analyze_the_architecture(
-            clone, repository, a_model_for(a_configuration_from_the_environment())
+            clone,
+            repository,
+            what_the_run_is_about,
+            a_model_for(a_configuration_from_the_environment()),
         )
 
     return analysing

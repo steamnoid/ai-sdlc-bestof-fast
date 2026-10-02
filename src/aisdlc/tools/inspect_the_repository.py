@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.tools.filesystem_read import (
     PathNotInTheProjectError,
     a_path_in_the_project,
@@ -64,7 +65,53 @@ A_LIMIT_ON_A_SINGLE_FILE = 20_000
 # A limit on everything, because a context is finite and a selection with no ceiling is a
 # repository pasted into a question. It is generous: enough for a real service's
 # security-relevant surface, and small enough that a manifest is not the fourth of it.
-A_LIMIT_ON_THE_WHOLE_INSPECTION = 120_000
+# **How much of the whole limit one directory may hold.** A third, and the number is a third
+# because this repository has two top-level directories that matter — `src` and `tests` — and a
+# third leaves each of them room to be fully useful while making it impossible for either to
+# crowd the other out.
+#
+# **This exists because a budget is not a sort.** The order below is by depth and then by path, and
+# it was chosen so that a `Dockerfile`, a `Makefile` and a `package.json` — which sit at the root
+# and the top — survive a cap. Then test files became part of what an agent is shown, test files
+# sit two levels down and source files four, and the rule that protected the manifest spent the
+# whole limit on tests. A real run was refused at its first gate for citing twenty-one test files
+# and no source file, having been shown exactly that: `src/aisdlc/tools/run_command.py` — the
+# subject of the run — was not in the inspection.
+THE_SHARE_OF_THE_SOURCE_LIMIT_ONE_DIRECTORY_MAY_HOLD = 1 / 3
+
+# **What it shows of what the rule chose, measured rather than assumed.** In this repository the
+# rule chooses forty-two files and this limit shows nineteen; the other twenty-three are named in
+# the "not shown" list underneath, and none is dropped without appearing in one bucket or the
+# other. That is the design working as it is described — a truncated inspection says it was
+# truncated rather than looking complete.
+#
+# **Raised from 120 000 and then put back, because the measurement behind the raise was about the
+# wrong thing.** The rule's chosen set weighs a hundred and ninety thousand characters against a
+# hundred-and-twenty-thousand limit, which reads as an argument for raising it — and raising it to
+# two hundred and fifty thousand did bring ten more files in. It did not bring `run_command.py` in,
+# which is the file a real run had been refused for not having been shown, because that file was
+# never among the forty-two: the name rule had dropped it. A number changed for the wrong reason is
+# worse than a number left alone, so it is left alone and the request is what the inspection reads.
+#
+# **And it is named for the source, because it bounds the source and nothing else.** It was
+# `A_LIMIT_ON_THE_WHOLE_INSPECTION`, and it is used in exactly two places — once to derive the share
+# above and once as the check that stops the loop — and both are inside the source function. On a
+# repository built for the purpose it is **not** a bound on the assembled inspection:
+#
+# ```text
+# assembled inspection  175926
+# this limit            120000
+# exceeds it by          55926
+# ```
+#
+# The manifests, the README and the CI configuration each get the per-file limit and cannot see
+# one another, so a repository with three large ones beside a full source section is over by nearly
+# half. **Bounding the whole is not done here on purpose**: it re-budgets every inspection every
+# reasoning stage is shown, which is a decision to take with its cost measured, and this is a
+# naming problem. `tests/test_the_limit_is_named_for_what_it_bounds.py` holds both halves — that
+# this name is true, and that the whole still exceeds it, so the day that changes it is a decision
+# rather than a surprise.
+A_LIMIT_ON_THE_SOURCE_THAT_MAY_CARRY_RISK = 120_000
 
 # What a file has to be called to be shown to a model reasoning about a repository. **A name and
 # not a parse, because a name is the only signal available without reading every file in the
@@ -181,6 +228,15 @@ DIRECTORIES_THAT_HOLD_SOMEONE_ELSES_CODE = (
     "target",
 )
 
+DIRECTORIES_THAT_HOLD_THE_PROJECTS_OWN_TESTS = (
+    "test",
+    "tests",
+    "testing",
+    "spec",
+    "specs",
+    "__tests__",
+)
+
 # How deep the search goes. Deep enough to find `web-app/src/app/api/.../route.ts` and shallow
 # enough that a generated tree cannot become the answer on its own.
 HOW_DEEP_THE_SEARCH_GOES = 6
@@ -218,7 +274,10 @@ def an_inspection_of(clone: ClonedRepository) -> str:
     return "\n\n".join(section for section in sections if section)
 
 
-def an_inspection_of_the_code(clone: ClonedRepository) -> str:
+def an_inspection_of_the_code(
+    clone: ClonedRepository,
+    what_the_run_is_about: CommissionedRequest | None = None,
+) -> str:
     """Everything `an_inspection_of` shows, plus the code, plus what was left out.
 
     **Two inspections and not one, because two consumers want different things and sharing one
@@ -241,7 +300,9 @@ def an_inspection_of_the_code(clone: ClonedRepository) -> str:
     """
     inside = clone.path
 
-    what_was_shown, what_was_not = _the_source_that_may_carry_risk(inside)
+    what_was_shown, what_was_not = _the_source_that_may_carry_risk(
+        inside, what_the_run_is_about
+    )
 
     sections = [
         _what_the_project_is(clone),
@@ -256,7 +317,9 @@ def an_inspection_of_the_code(clone: ClonedRepository) -> str:
     return "\n\n".join(section for section in sections if section)
 
 
-def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]:
+def _the_source_that_may_carry_risk(
+    inside: Path, what_the_run_is_about: CommissionedRequest | None
+) -> tuple[list[str], list[str]]:
     """The source files whose names say a change might touch them, and the names of the rest.
 
     **Chosen by name and capped by characters, in that order.** A name is the only signal
@@ -269,34 +332,77 @@ def _the_source_that_may_carry_risk(inside: Path) -> tuple[list[str], list[str]]
     `package.json` live — are the ones that survive it.
     """
     how_many_characters_are_spent = 0
+    how_much_each_directory_may_spend = (
+        A_LIMIT_ON_THE_SOURCE_THAT_MAY_CARRY_RISK
+        * THE_SHARE_OF_THE_SOURCE_LIMIT_ONE_DIRECTORY_MAY_HOLD
+    )
+    spent_by_directory: dict[str, int] = {}
     what_was_shown: list[str] = []
     what_was_not: list[str] = []
 
-    for a_path in _every_source_file_in(inside):
+    for a_path in _every_source_file_in(inside, what_the_run_is_about):
         its_text = _the_text_of(inside, a_path)
 
         if its_text is None:
             what_was_not.append(a_path)
             continue
 
-        if how_many_characters_are_spent + len(its_text) > A_LIMIT_ON_THE_WHOLE_INSPECTION:
+        if (
+            how_many_characters_are_spent + len(its_text)
+            > A_LIMIT_ON_THE_SOURCE_THAT_MAY_CARRY_RISK
+        ):
+            what_was_not.append(a_path)
+            continue
+
+        the_directory_it_is_in = a_path.split("/", 1)[0]
+        how_much_that_directory_has_spent = spent_by_directory.get(the_directory_it_is_in, 0)
+        if how_much_that_directory_has_spent + len(its_text) > how_much_each_directory_may_spend:
             what_was_not.append(a_path)
             continue
 
         what_was_shown.append(f"## {a_path}\n\n{its_text}")
+        spent_by_directory[the_directory_it_is_in] = (
+            how_much_that_directory_has_spent + len(its_text)
+        )
         how_many_characters_are_spent += len(its_text)
 
     return what_was_shown, what_was_not
 
 
-def _every_source_file_in(inside: Path) -> list[str]:
-    """Every source file, nearest the root first, skipping anybody else's code.
+def _every_source_file_in(
+    inside: Path, what_the_run_is_about: CommissionedRequest | None = None
+) -> list[str]:
+    """Every source file, what the run asked about first, skipping anybody else's code.
 
     **Sorted by depth and then by path, so two runs of one work item are comparable.** An
     inspection whose order came out of the file system would be a different question each time,
     and a report checked against it would be checked against a different thing.
+
+    **What the run asked about comes before both, and that is the only thing read here about
+    the work.** A real run was refused at its first gate for citing twenty-one test files and no
+    source file at all, while every one of its `key_components` named a symbol out of `src/` — and
+    measuring the selection said why nothing else could have found the file:
+
+    ```text
+    eligible files 169      selected by name 11      dropped by the name rule 158
+    ```
+
+    **The run's request contained the path in plain text and the file was one of the hundred and
+    fifty-eight the name rule dropped.** The rule is a list of words about security and about
+    builds, extended twice already for exactly this reason — once because a run was refused for
+    never having opened a `Dockerfile` — and the next extension would have been `command`, which
+    adds one file: the one that run was about. A selection that reads nothing about the work is a
+    guess dressed as a selection, so the request is read here and the request is the run's own
+    words.
+
+    **The check is a substring and not a parser, on purpose.** A file qualifies when the text of
+    the request contains its path exactly as the clone spells it. There is no pattern to get
+    wrong, no way to read a path that is not there, and no way for a request to name a file that
+    does not exist — the file has to have been found by the walk to be named at all.
     """
-    found: list[tuple[int, str]] = []
+    what_they_asked_for = _the_words_of(what_the_run_is_about)
+
+    found: list[tuple[int, int, str]] = []
 
     for a_path in inside.rglob("*"):
         if not a_path.is_file():
@@ -313,12 +419,53 @@ def _every_source_file_in(inside: Path) -> list[str]:
             its_name not in FILES_NAMED_WITHOUT_AN_EXTENSION
         ):
             continue
-        if not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER):
+
+        its_path_as_written = str(a_path.relative_to(inside))
+        the_run_asked_for_it = its_path_as_written in what_they_asked_for
+
+        if not (
+            the_run_asked_for_it
+            or _it_lives_where_tests_live(its_parts)
+            or any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER)
+        ):
             continue
 
-        found.append((len(its_parts), str(a_path.relative_to(inside))))
+        found.append((0 if the_run_asked_for_it else 1, len(its_parts), its_path_as_written))
 
-    return [a_path for _, a_path in sorted(found)]
+    return [a_path for _, _, a_path in sorted(found)]
+
+
+def _the_words_of(what_the_run_is_about: CommissionedRequest | None) -> str:
+    """The request as one piece of text, or nothing at all when nobody said what the run was for.
+
+    **The title and the body, and not `filed_as`.** The filing is where a reader goes for the rest
+    of a conversation and it is `None` for the ordinary case of somebody saying it out loud, so a
+    run commissioned from a filing has the same words as one commissioned from a sentence.
+
+    **`None` is an honest empty string rather than a default worth having.** Four of the five
+    stages are handed no request today, and a stage that is not told what the run is about gets
+    the selection the name rule alone produces — which is what it got before any of this.
+    """
+    if what_the_run_is_about is None:
+        return ""
+    return f"{what_the_run_is_about.title}\n{what_the_run_is_about.body}"
+
+
+def _it_lives_where_tests_live(its_parts: tuple[str, ...]) -> bool:
+    """Whether a path runs through a directory whose job is to hold this project's own tests.
+
+    **The third time a file has been invisible because its *name* did not match a list**, and
+    the same comment above the list says why it keeps happening: the word list is framed around
+    what a *change* tends to touch, and a test is named after what it asserts rather than after
+    a subsystem. `test_a_python_repository_can_be_verified.py` contains none of those words, so
+    the entire suite of this repository was shown to nobody.
+
+    Location is the honest signal here. A directory called `tests` holds tests whatever the files
+    inside are called, and every language in every repository agrees on the name because it is
+    the one thing that has to mean the same thing to a person reading a path and to the tool
+    walking it.
+    """
+    return any(a_part in DIRECTORIES_THAT_HOLD_THE_PROJECTS_OWN_TESTS for a_part in its_parts)
 
 
 def _the_text_of(inside: Path, a_path: str) -> str | None:
@@ -451,6 +598,20 @@ def _the_section(inside: Path, name: str, what: str) -> str | None:
     that turns out to be a symlink out of the clone is refused rather than followed.
     A file too large to be worth the context is named and left out, because a truncated
     manifest is a manifest that lies about its own contents.
+
+    **And the line saying so states where its number came from.** It used to read
+    `(omitted: 61199 characters, too large to read)`, which says two things and lets a
+    careful reader resolve them wrongly: a bare character count on the same line as
+    "too large to read" is a measurement to anyone who has not been told otherwise, and
+    nobody had been told otherwise. A real run's discovery report said faithfully that
+    `README.md` was not readable and quoted the size it had been given here, and the
+    policy reading it refused the run for the contradiction — which does not exist. The
+    line now says the size is known without reading the file, which is what is true.
+
+    **This is the writer's mistake rather than the reader's**, and that is why the fix is
+    here instead of in the policy's question: explaining a notation to the model about to
+    rule on a document puts the convention somewhere it can drift from the thing it
+    describes. A line that cannot be misread needs no explanation.
     """
     try:
         read = read_file_in_the_project(
@@ -460,7 +621,11 @@ def _the_section(inside: Path, name: str, what: str) -> str | None:
         return None
 
     if len(read.text) > A_LIMIT_ON_A_SINGLE_FILE:
-        return f"## {name}\n\n(omitted: {len(read.text)} characters, too large to read)"
+        return (
+            f"## {name}\n\n"
+            f"({len(read.text)} characters. Its text is not shown, because a file this large is "
+            f"not worth the context, and the size is known without reading it.)"
+        )
 
     return f"## {name}\n\n{read.text}"
 

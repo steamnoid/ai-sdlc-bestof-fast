@@ -28,10 +28,40 @@ THE_README = Path(__file__).resolve().parent.parent / "README.md"
 THE_TESTS = Path(__file__).resolve().parent
 
 
+def test_every_test_file_in_a_subdirectory_is_named_too() -> None:
+    """**The guard was blind to both new tiers, and it was green while it was blind.**
+
+    `THE_TESTS.glob("test_*.py")` reaches the top of `tests/` and nothing under it. When
+    `tests/e2e/` and `tests/integration/` were created, this kept passing — two test files nobody
+    could find, in a repository whose whole argument is that a claim nobody can find is a claim
+    nobody is held to.
+
+    **The same disease as the parser with no caller and the promise with no code**, one level up:
+    a guard whose scope was never widened when the directories were. A guard is a thing that has
+    to be extended deliberately, and this one was extended by nobody because nothing said it had
+    to be.
+    """
+    the_files_in_subdirectories = {
+        a_file.name
+        for a_file in THE_TESTS.rglob("test_*.py")
+        if a_file.is_file() and a_file.parent != THE_TESTS
+    }
+
+    the_ones_the_readme_names = _the_test_files_the_readme_names()
+
+    missing = sorted(the_files_in_subdirectories - the_ones_the_readme_names)
+
+    assert not missing, (
+        f"these test files exist under a subdirectory and the README names none of them: "
+        f"{missing}. A test file nobody can find is a claim nobody is held to, and this guard "
+        "exists for exactly that and could not see either tier"
+    )
+
+
 def _the_test_files_that_exist() -> set[str]:
     return {
         a_file.name
-        for a_file in sorted(THE_TESTS.glob("test_*.py"))
+        for a_file in sorted(THE_TESTS.rglob("test_*.py"))
         if a_file.is_file()
     }
 

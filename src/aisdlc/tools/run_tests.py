@@ -82,6 +82,105 @@ THE_SUITE_THAT_THIS_REPOSITORY_DEFINES = ("npm", "test")
 # `a_listing_command_for_a_toolchain` is where that question is asked and answered.
 THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS = ("npx", "vitest", "list", "--run")
 
+# **The same four answers for a Python repository, and read out of a real `pytest` rather than
+# remembered.** `--collect-only -q` prints one `path::test_name` per collected test, which is more
+# than a file listing and is why `the_test_files_the_suite_reported_running` now reads both.
+THE_SUITE_THAT_A_PYTHON_REPOSITORY_DEFINES = ("python", "-m", "pytest", "-q")
+# **The runner is installed with the project, because the runner is what the suite invokes.**
+# `pip install -e .` installs the repository's own package and nothing else, so `python -m pytest`
+# then fails with `No module named pytest` — read out of a real container run, not imagined.
+# A repository's test dependencies live in whatever it declares, and a group pip does not read
+# (`[dependency-groups]`, which is a `uv` concept) is invisible to it, so naming the runner
+# explicitly is the one answer that works for an arbitrary repository rather than this one.
+THE_INSTALL_THAT_FETCHES_A_PYTHON_PACKAGE = (
+    "python",
+    "-m",
+    "pip",
+    "install",
+    "-e",
+    ".",
+    "pytest",
+)
+THE_LISTING_THAT_A_PYTHON_RUNNER_UNDERSTANDS = (
+    "python",
+    "-m",
+    "pytest",
+    "--collect-only",
+    "-q",
+)
+THE_PYTHON_WHEN_A_REPOSITORY_DECLARES_NONE = "python:3.13-slim"
+
+# **The uv branch, and the image is the one that has uv in it.** Read out of a real `docker
+# manifest inspect`, not remembered: the tag is the part of this that has to be right, and a
+# repository that cannot be installed because the image name was a guess is a red suite that says
+# nothing about the change.
+# **Not the `-slim` variant, and that is a real run's finding rather than a preference.** Thirteen
+# of this repository's tests build a git repository in a temporary directory, and the slim image
+# has no `git` in it, so all thirteen error with `FileNotFoundError: 'git'`. That is not a smaller
+# suite — it is a suite whose fixtures cannot run, and the report says "13 errors" rather than
+# "the sandbox lacks a tool". Checked with `docker run --rm --network=none <image> command -v git`
+# on both variants; the slim one has no git and the other one does.
+#
+# **`node:22-bookworm` is already the non-slim variant**, which is why the node path never hit
+# this and why the two answers disagreeing would have looked like a uv problem.
+THE_UV_IMAGE_THAT_RUNS_A_REPOSITORYS_OWN_TOOLCHAIN = (
+    "ghcr.io/astral-sh/uv:python3.13-bookworm"
+)
+# `--all-extras` because a repository's own suite lives in its extras and its dev group, which is
+# what "the suite" means for a project that publishes a library and tests the rest.
+THE_INSTALL_THAT_FETCHES_WITH_UV = ("uv", "sync", "--all-extras")
+# `--no-sync` because the suite container must not touch the network, and a sync would.
+THE_SUITE_THAT_A_UV_REPOSITORY_DEFINES = ("uv", "run", "--no-sync", "pytest", "-q")
+THE_LISTING_THAT_A_UV_REPOSITORY_UNDERSTANDS = (
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+)
+
+# **pytest's own "nothing was collected", named.** Exit code 5 means no tests were collected, which
+# is not a failing suite and is not a passing one — it is a suite that never ran, and the first
+# report of a Python repository here said "No module named pytest" as though it were a red suite.
+# `dependencies_installed` already keeps "would not install" apart from "ran and failed"; this is
+# the same idea for the third case.
+PYTEST_SAYS_IT_COLLECTED_NOTHING = 5
+
+# Where the container's `HOME` points, and why it is a constant rather than a setting.
+# S108 is about a *host's* shared temporary directory: this is inside a `--rm` container that
+# has one mount, no credential and no network, and the value names a home rather than opening one.
+WHERE_THE_TOOLCHAIN_MAY_WRITE_ITS_HOME = "/tmp"  # noqa: S108
+A_FROM_LINE_NAMING_A_PYTHON_IMAGE = re.compile(r"^\s*FROM\s+(python:[\w.\-]+)", re.MULTILINE)
+
+
+class HowThisRepositoryIsTested(BaseModel):
+    """The four answers that decide how one repository's suite is run, together.
+
+    **One model and not five arguments,** because they are one fact and because they were once
+    unrelated constants that happened to agree. `pip install -e .` with `node:22-bookworm` is not
+    a configuration anybody chose; it is what you get when each answer has its own default and none
+    of them has an owner.
+
+    **And the cache flag is one of the answers, which is the fifth one and the reason it is here.**
+    It used to be appended at the call site as a literal `--cache`, because npm was the only
+    toolchain this system had. `uv` spells it `--cache-dir` and **refuses to start** when given
+    the other one — a red install that said `tip: a similar argument exists`, from a real run.
+    A flag belonging to one toolchain cannot be a constant in a function serving three.
+
+    **And neither can the directory.** The path was `/tmp/.npm` for all of them, so `uv` was told
+    to keep its cache in a directory named after another package manager — which works, and is
+    the sort of thing that is still there in three years when somebody greps for what writes to
+    `/tmp`.
+    """
+
+    toolchain_image: str
+    installation_command: tuple[str, ...]
+    suite_command: tuple[str, ...]
+    listing_command: tuple[str, ...]
+    the_flag_that_points_a_cache_somewhere_writable: str
+    where_its_cache_may_be_written: str
+
 # The marks a runner puts in front of a file it collected: passed, failed, and skipped. As escapes
 # so this file stays ASCII, and three rather than four because a fourth was remembered rather than
 # observed — see `the_test_files_the_suite_reported_running`, which quotes a container's output for
@@ -116,6 +215,9 @@ NOBODY_WHO_IS_ROOT = 0
 DOCKER = "docker"
 SECONDS_AN_INSTALL_MAY_TAKE = 900
 SECONDS_A_SUITE_MAY_TAKE = 1800
+# A listing is `--collect-only`: the same import graph as a run and none of the test bodies,
+# so it is bounded generously and for the same reason the install is.
+SECONDS_A_LISTING_MAY_TAKE = 600
 
 # Read out of a repository's Dockerfile rather than remembered. A guess here produces
 # failures that belong to this system and are reported as the repository's tests failing.
@@ -233,6 +335,23 @@ class SuiteOutcome(BaseModel):
     passed: bool
     dependencies_installed: bool
     output: str
+    what_it_collected: str = ""
+    """What this runner said it collects, in its own words, when it was asked.
+
+    **A second field because a suite printing its own output and a runner listing its files are
+    two questions asked at two moments, and neither answers the other.** `pytest -q` prints nine
+    dots and a percentage — the run happened and the report names no file at all, so a check
+    reading `output` has nothing to read and either refuses every correct change or passes every
+    uncollected one. Six pull requests on this machine were opened by a run and the best documented
+    one delivered two test files into a directory its target's runner never collects; its report
+    said the suite passed before the change and passed after it, and both were true.
+
+    **So the runner is asked, and the answer travels with the result rather than being left at
+    the stage that happened to ask first.** The planning stage already asks — that is what
+    `announcement_command` is — and the answer used to be used for planning and then thrown away,
+    which left verification guessing from dots. Empty when nothing was asked, and a caller that
+    needs the listing says so rather than reading `output` and hoping.
+    """
 
 
 def the_checkout_only_mount(checkout: str) -> dict[str, str]:
@@ -287,6 +406,24 @@ def the_user_the_run_may_execute_as() -> str:
     return f"{os.getuid()}:{os.getgid()}"
 
 
+def the_python_a_repository_declares(checkout: str) -> str | None:
+    """The `python:...` its own Dockerfile builds on, read the same way a node one is.
+
+    **Added because this repository is a Python one and could not be verified at all.** Every
+    constant that decided how a suite ran named npm, and a run whose change was to this codebase
+    installed and ran nothing — so the verification failed, the delivery refused, and no change
+    this system could make about itself was ever deliverable.
+    """
+    for name in THE_DOCKERFILES_A_REPOSITORY_MAY_DECLARE_ITS_NODE_IN:
+        path = Path(checkout) / name
+        if not path.is_file():
+            continue
+        declared = A_FROM_LINE_NAMING_A_PYTHON_IMAGE.search(path.read_text(encoding="utf-8"))
+        if declared is not None:
+            return declared.group(1)
+    return None
+
+
 def the_node_a_repository_declares(checkout: str) -> str | None:
     """The `node:...` its own Dockerfile builds on, or nothing at all.
 
@@ -302,6 +439,83 @@ def the_node_a_repository_declares(checkout: str) -> str | None:
             continue
         return declared.group(1)
     return None
+
+
+def how_this_repository_is_tested(checkout: str) -> HowThisRepositoryIsTested:
+    """How *this* repository's suite is run, read out of what it declares rather than remembered.
+
+    **A repository that says what it needs is asked; one that says nothing gets npm.** That is the
+    rule this file already followed for the *image* — "the toolchain image is read out of the
+    repository, not remembered" — and it was never applied to the other two answers. `npm test`
+    was hardcoded the way a default should be, next to a comment saying that a repository whose
+    suite is `pytest` has no such mode, and the sentence naming where that question would be
+    answered pointed at a function that did not exist.
+
+    **It exists now, and the naming is the point.** `HowThisRepositoryIsTested` is the four
+    answers together because they are one fact — a repository's toolchain is not four independent
+    settings, and asking for them separately is how `node:22-bookworm` came to be paired with
+    `npm test` by accident rather than by anybody's decision.
+    """
+    if _this_repository_declares_uv(checkout):
+        return HowThisRepositoryIsTested(
+            toolchain_image=THE_UV_IMAGE_THAT_RUNS_A_REPOSITORYS_OWN_TOOLCHAIN,
+            installation_command=THE_INSTALL_THAT_FETCHES_WITH_UV,
+            suite_command=THE_SUITE_THAT_A_UV_REPOSITORY_DEFINES,
+            listing_command=THE_LISTING_THAT_A_UV_REPOSITORY_UNDERSTANDS,
+            the_flag_that_points_a_cache_somewhere_writable="--cache-dir",
+            where_its_cache_may_be_written="/tmp/.uv",  # noqa: S108
+        )
+    if _this_repository_declares_python(checkout):
+        return HowThisRepositoryIsTested(
+            toolchain_image=the_python_a_repository_declares(checkout)
+            or THE_PYTHON_WHEN_A_REPOSITORY_DECLARES_NONE,
+            installation_command=THE_INSTALL_THAT_FETCHES_A_PYTHON_PACKAGE,
+            suite_command=THE_SUITE_THAT_A_PYTHON_REPOSITORY_DEFINES,
+            listing_command=THE_LISTING_THAT_A_PYTHON_RUNNER_UNDERSTANDS,
+            the_flag_that_points_a_cache_somewhere_writable="--cache-dir",
+            where_its_cache_may_be_written="/tmp/.pip",  # noqa: S108
+        )
+    return HowThisRepositoryIsTested(
+        toolchain_image=the_toolchain_image_a_repository_declares(checkout),
+        installation_command=THE_INSTALL_THAT_FETCHES_PACKAGES,
+        suite_command=THE_SUITE_THAT_THIS_REPOSITORY_DEFINES,
+        listing_command=THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS,
+        the_flag_that_points_a_cache_somewhere_writable="--cache",
+        where_its_cache_may_be_written="/tmp/.npm",  # noqa: S108
+    )
+
+
+def _this_repository_declares_uv(checkout: str) -> bool:
+    """Whether this is a uv repository, by what it declares rather than by what it is called.
+
+    **`uv.lock` or a `[tool.uv]` table, and either is enough.** This repository has both. The
+    check exists because of a fact about pip that is easy to miss until a suite fails to import:
+    **pip does not read `[dependency-groups]`** — that is a `uv` idea — so installing a uv-managed
+    project with pip gets the project and none of its development dependencies. `langchain` is
+    an *extra* here, and pytest lives in the dev group, so the pip branch can install this
+    repository and still be unable to run its suite.
+
+    **And uv is the branch that can persist, which is the other half of it.** `uv sync` writes its
+    environment to `.venv` **inside the project**, on the checkout mount, which is the one thing
+    the install container and the suite container share. That is exactly what `npm ci` does with
+    `node_modules`, and it is why the node path worked and `pip install -e .` did not: pip wrote
+    to the interpreter, which is thrown away with the container.
+    """
+    if Path(checkout, "uv.lock").is_file():
+        return True
+    pyproject = Path(checkout, "pyproject.toml")
+    return pyproject.is_file() and "[tool.uv" in pyproject.read_text(encoding="utf-8")
+
+
+def _this_repository_declares_python(checkout: str) -> bool:
+    """Whether this is a Python repository, by what it declares rather than by what it is called.
+
+    **`pyproject.toml` and not the presence of `.py` files**, for the same reason the image is
+    read from a declared `FROM` line rather than from the file extension: a repository that
+    contains Python and runs a Node suite is common, and one that runs pytest nearly always
+    declares it.
+    """
+    return Path(checkout, "pyproject.toml").is_file()
 
 
 def the_toolchain_image_a_repository_declares(checkout: str) -> str:
@@ -347,6 +561,16 @@ def _an_invocation_of(
         "--cap-drop=ALL",
         f"--user={the_user}",
         f"--network={network}",
+        # **One environment variable, and it is a constant rather than a parameter.** This
+        # container has never been given any, and the reason was good: an empty map cannot be
+        # filtered wrong, because there is nothing in it to filter. But a toolchain that writes
+        # to `$HOME` cannot run without one — `pip install` reaches for `~/.local` and dies with
+        # `Permission denied: /.local` on an image whose home is `/` and whose user is not root.
+        # A *constant* is the stronger version of the same property: there is no parameter to
+        # pass a credential through, so forgetting to exclude one cannot happen. `/tmp` is the
+        # directory this file already names as the one any uid can create inside a toolchain.
+        "-e",
+        f"HOME={WHERE_THE_TOOLCHAIN_MAY_WRITE_ITS_HOME}",
         f"-v{mounts[WHERE_THE_CHECKOUT_APPEARS_INSIDE]}:{WHERE_THE_CHECKOUT_APPEARS_INSIDE}",
         f"-w{WHERE_THE_CHECKOUT_APPEARS_INSIDE}",
         toolchain_image,
@@ -363,7 +587,8 @@ def a_suite_to_run(repository: Repository, checkout: str) -> ASuiteToRun:
     the `node:` its Dockerfile builds on, and that is what the suite runs in, with the
     checkout mounted over the working directory.
     """
-    toolchain_image = the_toolchain_image_a_repository_declares(checkout)
+    how_it_is_tested = how_this_repository_is_tested(checkout)
+    toolchain_image = how_it_is_tested.toolchain_image
     mounts = the_checkout_only_mount(checkout)
     the_user = the_user_the_run_may_execute_as()
 
@@ -374,9 +599,9 @@ def a_suite_to_run(repository: Repository, checkout: str) -> ASuiteToRun:
         installation_command=_an_invocation_of(
             toolchain_image,
             (
-                *THE_INSTALL_THAT_FETCHES_PACKAGES,
-                "--cache",
-                WHERE_THE_TOOLCHAIN_MAY_WRITE_ITS_CACHE,
+                *how_it_is_tested.installation_command,
+                how_it_is_tested.the_flag_that_points_a_cache_somewhere_writable,
+                how_it_is_tested.where_its_cache_may_be_written,
             ),
             mounts,
             "bridge",
@@ -384,19 +609,22 @@ def a_suite_to_run(repository: Repository, checkout: str) -> ASuiteToRun:
         ),
         suite_command=_an_invocation_of(
             toolchain_image,
-            THE_SUITE_THAT_THIS_REPOSITORY_DEFINES,
+            how_it_is_tested.suite_command,
             mounts,
             "none",
             the_user,
         ),
         announcement_command=_a_listing_command_for(
-            toolchain_image, mounts, the_user
+            toolchain_image, mounts, the_user, checkout
         ),
     )
 
 
 def _a_listing_command_for(
-    toolchain_image: str, mounts: dict[str, str], the_user: str
+    toolchain_image: str,
+    mounts: dict[str, str],
+    the_user: str,
+    checkout: str,
 ) -> ContainerCommand:
     """The container that asks the runner what it collects.
 
@@ -408,18 +636,17 @@ def _a_listing_command_for(
     front of it; a command that reached the network for that would be a worse answer as well as a
     slower one, and the install already had its turn at the network.
 
-    **Not optional, and that is the suite's limitation rather than a new one.** There is a branch
-    here that says "a toolchain this system cannot ask gets no listing", and I wrote it before
-    reading `the_toolchain_image_a_repository_declares` — which falls back to a node image for any
-    repository that names none, so the branch was true for every input including a `FROM python`
-    Dockerfile. A guard that cannot fail is a branch a reader has to check to learn nothing.
-    `THE_SUITE_THAT_THIS_REPOSITORY_DEFINES` is `("npm", "test")` unconditionally, so every suite
-    this system can run is a node suite and every node suite can be asked. Widening that is a
-    separate slice and belongs there.
+    **Asked in whichever runner this repository uses, which is the sentence that used to name a
+    function that did not exist.** `the_toolchain_image_a_repository_declares` fell back to a node
+    image for any repository that named none, so the branch "a toolchain this system cannot ask
+    gets no listing" was true for every input including a `FROM python` Dockerfile. A guard that
+    cannot fail is a branch a reader has to check to learn nothing. `npm test` was hardcoded, so
+    every suite this system could run was a node suite — which was true, and not because anybody
+    decided it. Both runners print a collection listing, so there is no branch here.
     """
     return _an_invocation_of(
         toolchain_image,
-        THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS,
+        how_this_repository_is_tested(checkout).listing_command,
         mounts,
         "none",
         the_user,
@@ -482,12 +709,20 @@ def the_tests_in(
             output=_what_a_run_said(installation),
         )
 
+    # **Asked before the suite, because the suite's own output cannot answer this and the answer
+    # is what makes the suite's report readable.** `--collect-only` is cheap next to a run and
+    # this is the one question a container can answer that a report of dots cannot.
+    what_the_runner_collects = _a_container(
+        the_run.announcement_command, SECONDS_A_LISTING_MAY_TAKE
+    )
+
     suite = _a_container(the_run.suite_command, SECONDS_A_SUITE_MAY_TAKE)
     return SuiteOutcome(
         exit_code=suite.exit_code,
         passed=suite.exit_code == 0,
         dependencies_installed=True,
         output=_what_a_run_said(suite),
+        what_it_collected=_what_a_run_said(what_the_runner_collects),
     )
 
 
@@ -580,6 +815,42 @@ def the_test_files_the_suite_reported_running(what_the_suite_said: str) -> list[
     escapes in the constant below so
     the source is ASCII and nobody's editor has to guess what a lone mark means; a file a reader
     cannot see is a file a reader cannot check.
+    """
+    the_files = _the_files_a_node_suite_named(what_the_suite_said)
+    for a_path in _the_files_a_python_suite_named(what_the_suite_said):
+        if a_path not in the_files:
+            the_files.append(a_path)
+    return the_files
+
+
+def _the_files_a_python_suite_named(what_the_suite_said: str) -> list[str]:
+    """The files `pytest --collect-only -q` named, from its own output rather than from the disk.
+
+    **Read because pytest prints `path::test_name`, and the file is everything before the `::`.**
+    That is a different shape from a node suite's marks, so a parser that only understood one of
+    them reported nothing for the other — and "nothing" is the answer that makes an uncollected
+    test look like a suite that passed over it.
+
+    **A summary line is not a file.** pytest ends its output with something like `68 tests
+    collected in 3s`, and reading that as a path would put a line of prose into the list of files
+    that ran.
+    """
+    the_files: list[str] = []
+    for a_line in what_the_suite_said.splitlines():
+        stripped = a_line.strip()
+        if not stripped or "::" not in stripped:
+            continue
+        a_path = stripped.split("::", 1)[0].strip()
+        if a_path and a_path.endswith((".py",)) and a_path not in the_files:
+            the_files.append(a_path)
+    return the_files
+
+
+def _the_files_a_node_suite_named(what_the_suite_said: str) -> list[str]:
+    """The files a node runner named with the three marks `THE_MARKS_A_SUITE_NAMES_A_FILE_BY` holds.
+
+    The marks are written as escapes in that constant so this file stays ASCII; writing them here
+    literally would put a glyph a reader's editor has to guess at into a docstring.
     """
     the_files: list[str] = []
     for a_line in what_the_suite_said.splitlines():

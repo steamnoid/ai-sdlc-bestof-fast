@@ -43,6 +43,13 @@ from aisdlc.tools.inspect_the_repository import (
 )
 from aisdlc.tools.the_project_directory import where_projects_live
 
+# **What the gate is made of, named here so a test can read it.** The workflow and the pytest
+# configuration are the two places the claim "CI runs what pytest collects" is either true or
+# false, and both are read rather than restated — a test holding its own copy of either is a
+# second thing to keep in step.
+THE_GATE = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "gate.yml"
+THE_PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
 # The repository the fixture near the end of this file clones. Named here rather than built in
 # each test, because the three tests that use it are about the same thing and a repository each
 # invented would be one each could be wrong about.
@@ -682,6 +689,42 @@ def test_a_file_named_without_an_extension_is_still_shown_to_a_model(
     )
 
 
+def test_a_test_that_asks_for_anything_is_still_shown_to_a_model(
+    a_clone_of_a_real_repository: ClonedRepository,
+) -> None:
+    """A test's name is a sentence about behaviour, and a sentence carries no keywords.
+
+    **The selection rule was "does a word from a fixed list appear in this file's name", and
+    every test in this repository is named after what it asserts** — `a_python_repository_can_be
+    _verified`, `a_card_never_names_a_framework_node_as_a_step` — so not one of them matched and
+    the entire suite was invisible to every agent in this system.
+
+    That is the same defect the Dockerfile had, one level down, and the comment above the word
+    list already says why: *a selection framed around one consumer's question is the wrong
+    selection for the others*. The list grew once for security, once for what builds and deploys,
+    and each time it was patched by adding words — which is how the suite came to be missing.
+
+    **A file under a test directory is selected by where it lives, not by what it is called.**
+    Nobody names a test after a keyword, because the name's job is to say what is asserted.
+    """
+    from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
+
+    the_inspection = an_inspection_of_the_code(a_clone_of_a_real_repository)
+
+    for a_test_that_asks_for_anything in (
+        "tests/test_a_thing_that_has_nothing_to_do_with_any_keyword.py",
+    ):
+        assert a_test_that_asks_for_anything in the_inspection, (
+            f"{a_test_that_asks_for_anything} is not in the inspection. A run that was handed "
+            "this repository's tests could not read them, so it planned new ones beside the "
+            "old ones it had never seen — which is what four refusals in a row were about"
+        )
+    assert "def test_a_placeholder" in the_inspection, (
+        "the test is listed by name but its contents are not, so the file is named and unread — "
+        "the shape of a citation a report cannot back"
+    )
+
+
 def test_one_inspection_built_for_one_consumer_is_not_handed_to_another(
     a_clone_of_a_real_repository: ClonedRepository,
 ) -> None:
@@ -756,6 +799,13 @@ def a_clone_of_a_real_repository(tmp_path: Path):
     )
     (a_working_copy / ".gitignore").write_text("node_modules\n", encoding="utf-8")
     (a_working_copy / "package.json").write_text('{"name": "a-project"}\n', encoding="utf-8")
+    the_tests = a_working_copy / "tests"
+    the_tests.mkdir()
+    (the_tests / "test_a_thing_that_has_nothing_to_do_with_any_keyword.py").write_text(
+        "def test_a_placeholder() -> None:\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
     _git(a_working_copy, "add", ".")
     _git(a_working_copy, "commit", "-m", "the first commit")
     _git(a_working_copy, "remote", "add", "origin", str(the_bare))
@@ -796,3 +846,286 @@ def _git(where: Path, *what: str) -> str:
     if what_happened.returncode != 0:
         pytest.fail(f"git {' '.join(what)} in {where} failed: {what_happened.stderr}")
     return what_happened.stdout
+
+
+def test_one_directory_cannot_spend_the_whole_inspection() -> None:
+    """Adding tests to the inspection made it stop showing source, and no test said so.
+
+    **A real run found this, and the agent's own answer is the proof.** Its discovery report cited
+    twenty-four paths, twenty-one of them test files and none under `src/`, while every one of its
+    `key_components` named a symbol out of `src/aisdlc/`. The gate refused it — correctly — and the
+    reason was not a hallucination. Measuring the inspection that produced it:
+
+    ```text
+    cap is 120000 chars     shown 22     of which src/ 1     of which tests/ 21
+    src/aisdlc/tools/run_command.py in shown: False
+    ```
+
+    **`run_command.py` was the subject of the run and it was not in the inspection.** The sort is
+    by depth and then by path, and it was chosen so that the files nearest the root — a
+    `Dockerfile`, a `Makefile`, a `package.json` — are the ones that survive the cap. Test files
+    sit two levels down and source files four, so making tests visible to agents, which is what
+    the directory rule was for, put them all in front of every source file in the repository.
+
+    **A budget is not a sort, and a sort that lets one directory spend all of it is not a
+    selection.** This is the third time a guard has been blind to a tier: the parser with no
+    caller, the promise with no code, and now a cap nobody re-examined when the thing it selects
+    grew. The property is asserted rather than the fix, so that whichever way it is solved, this
+    keeps holding.
+
+    **The quota fixed the crowding and the diagnosis underneath it was still wrong.** I measured
+    what the whole eligible set weighs, believing the answer would be "a request-aware inspection
+    is too big to build":
+
+    ```text
+    src      715947 chars        tests 152214 chars        eligible 868182 chars
+    eligible files 169      selected by name 11
+    ```
+
+    **One hundred and sixty-nine files eligible, eleven selected** — and the file the run was about
+    was among the one hundred and fifty-eight the name rule dropped. `run_command.py` was never a
+    candidate at all, so no limit and no ordering ever excluded it; the thing that excluded it is a
+    keyword list, and the refused run's own request contained the path in plain text. That is the
+    defect, and it is in `test_a_file_the_request_names_is_shown_even_though_its_name_says_nothing`
+    below rather than here.
+
+    **This repository and not the fixture beside it**, because the first version of this test
+    asked the three-file fixture for a file under `src/` and the fixture has no `src/` at all — a
+    test demanding evidence from a repository that cannot hold it, written in a file whose whole
+    subject is judging whether evidence is representative.
+    """
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+    from aisdlc.tools.inspect_the_repository import an_inspection_of_the_code
+
+    the_repository_itself = ClonedRepository(
+        path=Path(__file__).resolve().parents[1], ref="main", commit="0" * 40
+    )
+
+    the_paths_it_showed = _what_the_inspection_showed(
+        an_inspection_of_the_code(the_repository_itself)
+    )
+
+    the_source_it_showed = [
+        a_shown for a_shown in the_paths_it_showed if a_shown.startswith("src/")
+    ]
+
+    assert the_source_it_showed, (
+        "the inspection carries test files and no source file at all, so a run about a source file "
+        "is handed evidence that does not contain it. An agent given this cannot be blamed for "
+        "writing about only what it was shown, and the gate that refuses it for doing exactly that "
+        "is refusing something true"
+    )
+
+
+def _what_the_inspection_showed(an_inspection: str) -> list[str]:
+    """Every path the inspection carried the text of, read from its own headings."""
+    return [
+        a_line.removeprefix("## ")
+        for a_line in an_inspection.splitlines()
+        if a_line.startswith("## ")
+    ]
+
+
+def test_a_file_the_request_names_is_shown_even_though_its_name_says_nothing() -> None:
+    """The run's own request contained the path in plain text, and the file was still not shown.
+
+    A real run was refused at its first gate — `DiscoveryReport` cited twenty-one test files and no
+    source file at all, while every one of its `key_components` named a symbol out of `src/` — and
+    the gate was right: the agent had been shown exactly that. **The run's subject was
+    `src/aisdlc/tools/run_command.py`, its request said so in plain text, and measuring the
+    selection showed why nothing else could find it:**
+
+    ```text
+    eligible files 169      selected by name 11      dropped by the name rule 158
+    ```
+
+    **A hundred and fifty-eight files the name rule drops, including the file the run was about.**
+    The rule is a list of words about security and about builds — it has been extended twice for
+    exactly this reason, once for a `Dockerfile` a run was refused for never having opened — and
+    every extension is a bet that this time the next work item will be about one of these. The
+    third one would have been `command`, which adds exactly one file: the one this run was about.
+
+    **So this is not a keyword problem and cannot be fixed by a keyword.** A selection that reads
+    nothing about the work is a guess dressed as a selection, and this repository's answer is that
+    the request is already in the state. A file whose path the request contains comes first, ahead
+    of the depth order and ahead of the name rule — not exempt from the limit, because the limit is
+    what stops a repository becoming a paste, but first in the queue for it.
+
+    **The middle assertion is the one that makes this test mean anything.** Without it, a green run
+    could be a green run because some future keyword happened to match, and the test would then be
+    asserting its own luck. It holds that no word in the list matches this file's name, so the name
+    rule cannot have chosen it and its presence can only be the request's doing.
+    """
+    from aisdlc.domain.commissioned_request import CommissionedRequest
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+    from aisdlc.tools.inspect_the_repository import (
+        WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER,
+        an_inspection_of_the_code,
+    )
+
+    the_repository_itself = ClonedRepository(
+        path=Path(__file__).resolve().parents[1], ref="main", commit="0" * 40
+    )
+    the_path_the_refused_run_was_about = "src/aisdlc/tools/run_command.py"
+    the_request_that_named_it = CommissionedRequest(
+        title="Enforce the trust boundary of run_command",
+        body=(
+            "Enforce the trust boundary of "
+            f"{the_path_the_refused_run_was_about}. FOUR DECISIONS, all binding."
+        ),
+    )
+
+    its_name = Path(the_path_the_refused_run_was_about).name.lower()
+    assert not any(a_word in its_name for a_word in WHAT_A_NAME_SAYS_A_FILE_MAY_MATTER), (
+        f"{the_path_the_refused_run_was_about} is the file a real run was refused for not having "
+        f"been shown, and its name now matches the word list anyway — so a green run would be a "
+        f"green run because a keyword happened to be added, and this test would be asserting its "
+        f"own luck. Its name is not meant to say anything; the request is"
+    )
+
+    shown_without_the_request = _what_the_inspection_showed(
+        an_inspection_of_the_code(the_repository_itself, None)
+    )
+    shown_with_the_request = _what_the_inspection_showed(
+        an_inspection_of_the_code(the_repository_itself, the_request_that_named_it)
+    )
+
+    assert the_path_the_refused_run_was_about not in shown_without_the_request, (
+        f"{the_path_the_refused_run_was_about} is already selected without being asked for, so the "
+        f"assertion below cannot be what is being proved. The name rule would then not be the "
+        f"defect it is being blamed for"
+    )
+
+    assert the_path_the_refused_run_was_about in shown_with_the_request, (
+        f"the request names {the_path_the_refused_run_was_about} in plain text and the inspection "
+        f"does not show it. It showed {len(shown_with_the_request)} files. A run is handed an "
+        f"inspection of a repository it is about, and the subject of the run is not in it"
+    )
+
+
+def test_the_gate_runs_every_tier_pytest_declares() -> None:
+    """Eight pull requests were green while a red test sat in a tier the gate never ran.
+
+    `uv run pytest -q` deselects `-m e2e`, and `.github/workflows/gate.yml` ran only that. So a
+    test carrying the `e2e` marker and asserting something true without any real dependency was
+    invisible to the gate, stayed red on `main` through eight pull requests, and every one of them
+    reported green. The test in question says so itself, in its own docstring:
+
+    > **So this test is red, and it is red on purpose.** Three gates approve a `SecurityReport`,
+    > the architecture and security analyses are the planner's neighbours in this very list, and
+    > the planner has never read either.
+
+    **It was fixed in the meantime and the sentence outlived the redness**, which is worth
+    noticing on its own: a comment asserting that its own test is broken stops being read the day
+    the test is repaired, and nothing checks it.
+
+    **So the gate runs the real tier.** Not with secrets — it needs none, and this test is what
+    makes that safe to rely on — and not the container tier, which needs a container and is left
+    opt-in. Every marker pytest declares as a real dependency is a set of tests the gate must be
+    able to fail on, and a marker nobody runs is a marker that hides.
+
+    **Read out of `pyproject.toml` rather than written here**, because the list of markers and the
+    list the gate runs are the same fact said twice, and a test that names them both would pass
+    when they disagree.
+    """
+    import tomllib
+
+    the_declared_markers = [
+        a_marker.split(":", 1)[0].strip()
+        for a_marker in tomllib.loads(THE_PYPROJECT.read_text(encoding="utf-8"))["tool"]["pytest"][
+            "ini_options"
+        ]["markers"]
+    ]
+
+    what_the_gate_runs = THE_GATE.read_text(encoding="utf-8")
+
+    never_run = [
+        a_marker
+        for a_marker in the_declared_markers
+        if f"-m {a_marker}" not in what_the_gate_runs
+        and f'"{a_marker}"' not in what_the_gate_runs
+    ]
+
+    assert not never_run, (
+        f"pytest declares {never_run} as a real dependency and .github/workflows/gate.yml never "
+        f"selects {never_run}. Everything carrying that marker is invisible to the gate, so it can "
+        f"be red on main while the gate is green — which is what happened for eight pull requests"
+    )
+
+
+def test_a_file_the_inspection_could_not_read_does_not_read_as_if_it_had(tmp_path: Path) -> None:
+    """A size on its own line reads as evidence of having read, and a real policy believed it.
+
+    A run was refused at its first gate for a contradiction that does not exist. The policy wrote:
+
+    > `README.md` is listed as evidence and given an exact 61,199-character size while
+    > `suggested_changes` states that same file "was not readable from the inspection"
+
+    **Both of those are true, and the model that wrote them was faithful in both directions.**
+    Measured against this repository:
+
+    ```text
+    is README.md in the inspection: True   <- the heading is there, saying it was omitted
+    any character count in it     : True   <- "(omitted: 61199 characters, too large to read)"
+    real size of README.md        : 61199
+    ```
+
+    The size came from the inspection and the file genuinely was not read. **The line says two
+    things, and a careful reader resolved them the wrong way** — a bare number of characters on
+    the same line as "too large to read" is evidence of reading to anyone who has not been told
+    otherwise, and nobody had been told otherwise.
+
+    **This is the writer's mistake, not the reader's.** The alternative fix is to explain the
+    notation to the policy, which asks a model to be told what a document means before ruling on
+    the document — and puts the convention somewhere it can drift from the thing it describes. A
+    line that cannot be misread needs no explanation.
+
+    **And the general shape: the gate refusing a faithful report is the most expensive failure in
+    this system**, because it costs a whole run and the report was right. That is why the fix is
+    to the text the inspection emits rather than to the judgement about it.
+    """
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+    from aisdlc.tools.inspect_the_repository import (
+        A_LIMIT_ON_A_SINGLE_FILE,
+        an_inspection_of_the_code,
+    )
+
+    # **`README.md`, and the two names this test tried first were both wrong in instructive
+    # ways.** `a_document.md` matched no word in the name rule and is under no tests directory, so
+    # the file was never read at all. `config.yml` matches the name rule but is not a source
+    # suffix, and neither is a manifest or a CI file — and the omission line is written by
+    # `_the_section`, which serves manifests, READMEs and CI configuration. A source file that is
+    # too large gets no line at all: `_the_text_of` returns `None` and its size is never
+    # mentioned. So the misread notation has exactly one home, and this is the file the refused
+    # run was about.
+    a_file_too_large_to_read = tmp_path / "README.md"
+    a_file_too_large_to_read.write_text(
+        "x" * (A_LIMIT_ON_A_SINGLE_FILE + 1), encoding="utf-8"
+    )
+
+    the_inspection = an_inspection_of_the_code(
+        ClonedRepository(path=tmp_path, ref="main", commit="0" * 40)
+    )
+
+    the_line_about_it = [
+        a_line for a_line in the_inspection.splitlines() if "README.md" in a_line
+    ]
+    the_measured_size = str(A_LIMIT_ON_A_SINGLE_FILE + 1)
+    said_it_could_not_be_read = [
+        a_line for a_line in the_inspection.splitlines() if the_measured_size in a_line
+    ]
+
+    assert said_it_could_not_be_read, (
+        f"the inspection does not mention the size of {a_file_too_large_to_read.name} at all, so "
+        f"this test is not about the line it should be about. What it says instead was "
+        f"{the_line_about_it}"
+    )
+
+    the_line = said_it_could_not_be_read[0]
+
+    assert "without reading it" in the_line, (
+        f"the inspection says {the_line!r} — a bare character count beside the words 'too large to "
+        f"read' reads as a measurement, and a real policy refused a faithful report for treating "
+        f"it as one. The line has to say where the number came from, because it did not come from "
+        f"reading the file"
+    )
