@@ -20,6 +20,7 @@ from langgraph.types import Command
 
 from aisdlc.agents.plan_the_change import PlannedTestDirectoryNotCollectedError
 from aisdlc.agents.requirements import Requirements
+from aisdlc.agents.security_report import SecurityReport
 from aisdlc.agents.what_the_planner_concluded import ImplementationPlanAnswer
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
@@ -38,7 +39,7 @@ from aisdlc.tools.what_people_said_about_a_work_item import a_comment_was_left
 # state, and `test_the_planner_seam_and_the_planner_name_the_same_arguments` compares the two lists
 # so a parameter cannot be added to one and forgotten in the other.
 PlanTheChange = Callable[
-    [Requirements, ClonedRepository, Repository, str], ImplementationPlanAnswer
+    [Requirements, SecurityReport, ClonedRepository, Repository, str], ImplementationPlanAnswer
 ]
 
 # What the suite is known to collect when nobody has asked it. Empty rather than a default glob,
@@ -48,6 +49,29 @@ PlanTheChange = Callable[
 THE_RUNNER_ANNOUNCED_NOTHING_YET = ""
 
 THE_ARTIFACT_PLANNING_PRODUCES = "ImplementationPlan"
+
+
+class SecurityReportHaveNotBeenApprovedYetError(Exception):
+    """The rule is in this module, and it may say the rule broke.
+
+    **A run that has not passed the security stage cannot be planned.** The planner now receives
+    the `SecurityReport`, because a plan that ignores findings three gates have approved is a plan
+    nobody told it not to write — and handing it `None` instead would restore exactly that, quietly,
+    on every run where the channel happened to be empty.
+
+    **Refused rather than defaulted to "no findings",** and the reason is the same one
+    `SecurityReport` itself refuses an empty result for: silence about security reads as safety.
+    """
+
+    def __init__(self) -> None:
+        """Say what is missing and where it came from, so the reader knows which gate."""
+        super().__init__(
+            "A plan is planned from the approved requirements and the approved SecurityReport, and "
+            "this run has no SecurityReport. It has not passed the security stage, and a planner "
+            "handed nothing would plan around the absence rather than say so. This node is reached "
+            "only after the security gate, so the record of a run that arrives here without one is "
+            "the thing to read."
+        )
 
 
 class ThePlanHasNoApprovedRequirementsError(Exception):
@@ -100,8 +124,13 @@ def plan_the_change_in_this_run(state: AgentState, plan: PlanTheChange) -> Comma
     ].work_done.how_many_times_this_agent_has_worked(THE_DEVELOPER_PLANNING_AGENT)
 
     try:
+        the_security_report = state["security_report"]
+        if the_security_report is None:
+            raise SecurityReportHaveNotBeenApprovedYetError
+
         what_the_planning_agent_concluded = plan(
             requirements,
+            the_security_report,
             clone,
             state["work_item"].repository,
             THE_RUNNER_ANNOUNCED_NOTHING_YET,

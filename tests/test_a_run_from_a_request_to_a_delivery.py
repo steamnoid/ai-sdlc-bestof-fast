@@ -218,7 +218,7 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
         )
 
     def plan(
-        requirements, clone, repository, what_the_suite_announced=""
+        requirements, security_report, clone, repository, what_the_suite_announced=""
     ) -> ImplementationPlanAnswer:
         return ImplementationPlanAnswer(
             judged=the_judged,

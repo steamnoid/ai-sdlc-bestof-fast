@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import get_args
 
 import pytest
 
@@ -35,12 +34,12 @@ from aisdlc.agents.security_report import SecurityReport
 from aisdlc.application.a_run_being_assembled import a_run_of, the_model_this_run_reasons_with
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
-from aisdlc.graph.plan_node import PlanTheChange
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from tests.is_a_named_path_a_file_of_the_clone import (
     how_a_named_path_is_wrong,
     the_paths_named_in,
 )
+from tests.the_arguments_the_planner_is_handed import the_types_the_planner_is_handed
 from tests.the_neighbouring_agent_pairs import (
     THE_NEIGHBOURING_PAIRS,
     ANeighbouringPair,
@@ -118,7 +117,7 @@ def test_the_planner_is_handed_the_security_report_it_is_meant_to_answer() -> No
     that takes the security report is a different planner — and not something to do by deleting
     the assertion.
     """
-    what_the_planner_is_handed = get_args(PlanTheChange)
+    what_the_planner_is_handed = the_types_the_planner_is_handed()
 
     assert SecurityReport in what_the_planner_is_handed, (
         f"the planner is handed {list(what_the_planner_is_handed)} and a SecurityReport is not "

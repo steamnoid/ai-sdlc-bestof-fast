@@ -39,6 +39,7 @@ from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.agents.implementation_plan import EmptyPlanError, ImplementationPlan
 from aisdlc.agents.requirements import Requirements
 from aisdlc.agents.requirements_answer import AnAmbiguity
+from aisdlc.agents.security_report import SecurityReport
 from aisdlc.agents.what_the_planner_concluded import ImplementationPlanAnswer
 from aisdlc.domain.repository import Repository
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
@@ -145,6 +146,7 @@ class PlannedFileNotFoundError(Exception):
 
 def the_prompt_to_plan_a_change(
     requirements: Requirements,
+    security_report: SecurityReport,
     inspection: str,
     repository: Repository,
     what_was_wrong_about_the_last_answer: str | None = None,
@@ -213,6 +215,13 @@ def the_prompt_to_plan_a_change(
         "hundred characters of explanation into `files_to_change`.\n"
         "\n"
         f"{the_rule_about_naming_a_file()}"
+        "The approved SecurityReport is below. Your plan answers it: every finding whose "
+        "recommendation\nis about a file this repository has must be reflected in what you "
+        "change or in\nwhat you say you are not changing and why. A plan that silently ignores "
+        "a finding three\ngates have agreed on is refused, not passed over.\n"
+        "\n"
+        f"{security_report.model_dump_json(indent=2)}\n"
+        "\n"
         f"Inspection of {repository.owner}/{repository.name}:\n"
         f"{inspection}"
     )
@@ -220,6 +229,7 @@ def the_prompt_to_plan_a_change(
 
 def plan_the_change(
     requirements: Requirements,
+    security_report: SecurityReport,
     clone: ClonedRepository,
     repository: Repository,
     model: BaseChatModel,
@@ -276,7 +286,7 @@ def plan_the_change(
             answer = ImplementationPlanAnswer.model_validate(
                 ask_a_model_for(model, ImplementationPlanAnswer).invoke(
                     the_prompt_to_plan_a_change(
-                        requirements, inspection, repository, what_was_wrong
+                        requirements, security_report, inspection, repository, what_was_wrong
                     )
                 )
             )
