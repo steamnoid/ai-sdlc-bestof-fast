@@ -149,8 +149,18 @@ supervisor is named for it rather than left to be discovered.
 
 ### `ImplementationPlan`
 
-`src/aisdlc/agents/implementation_plan.py` — `files_to_change`, `files_to_add`, `tests_to_add`,
-`dependencies`, `migrations`.
+`src/aisdlc/agents/implementation_plan.py` — `the_change_it_makes`, `files_to_change`,
+`files_to_add`, `tests_to_add`, `dependencies`, `migrations`.
+
+**`the_change_it_makes` is the sixth field and the only sentence among them, and it was the sixth
+because a real policy refused a real plan for having no place to put its reasoning.** Five lists
+of paths say what to touch and nothing about why; the implementer is handed this plan and a
+checkout and no request, and a reviewer is in the same position.
+
+**It sits outside the emptiness rule.** That rule asks whether a plan says anything *to do*, and a
+sentence with no file named cannot be implemented by anyone — so the statement is not a way to pass
+it. A field that both carried the reasoning and satisfied the rule would be a loophole wearing the
+same name as the fix.
 
 `tests_to_add` is separate from `files_to_change` because that is the only thing that knows which
 of a change's files are tests; a caller that had to guess would be guessing about a repository's

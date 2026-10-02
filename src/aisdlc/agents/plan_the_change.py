@@ -67,7 +67,16 @@ THE_DEVELOPER_PLANNING_AGENT = "aisdlc-dev-plan"
 # that a plan which cannot name a new file cannot deliver a new endpoint. The order follows the
 # questions, and the two "does not exist yet" lists are adjacent so a reader has to notice that
 # they differ.
+#
+# **And one sentence, which was missing.** A plan of paths says what to touch and nothing about
+# why, and the plan a real run produced and a real policy refused was refused for exactly that:
+# *"nothing here tells an implementer what 'enforce the trust boundary' actually requires"*. The
+# implementer is handed the plan and a checkout and no request, so this sentence is the whole of
+# what it knows about intent — and a reviewer reading a plan of five paths is in the same position.
+# It is asked for in the same question and in the same order as the lists, because a field asked
+# for separately is a field that comes back empty.
 THE_FIELDS_THE_PLAN_MAY_NAME = (
+    "the_change_it_makes",
     "files_to_change",
     "files_to_add",
     "tests_to_add",

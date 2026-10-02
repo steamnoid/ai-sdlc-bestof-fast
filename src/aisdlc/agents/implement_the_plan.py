@@ -182,10 +182,18 @@ def the_prompt_to_implement(
         for path in plan.files_to_change
     )
 
+    what_the_plan_said_it_makes = (
+        plan.the_change_it_makes
+        or "the plan said nothing, so read the files and the paths below"
+    )
+
     return (
         f"You are implementing one approved plan for the public repository "
         f"{clone.path.name}.\n"
         "Write the files the plan names, and nothing else.\n"
+        "\n"
+        "What the approved plan says this change makes, in the plan's own words:\n"
+        f"{what_the_plan_said_it_makes}\n"
         "\n"
         "Answer with `files`: for every file the plan names, its path and the **complete "
         "text that file should end up holding**. The whole text, not a diff and not an "

@@ -60,22 +60,39 @@ def test_a_plan_that_adds_a_dependency_is_accepted_for_the_same_reason() -> None
     assert a_plan.dependencies == ["httpx"]
 
 
-def test_every_field_the_plan_has_is_the_list_the_emptiness_rule_looks_at() -> None:
+def test_every_list_the_plan_has_is_a_list_the_emptiness_rule_looks_at() -> None:
     """The rule names four lists in a class with five, and this is what makes that a defect.
 
     Read from the model's own fields rather than from a copy of them here, so a field added to
     `ImplementationPlan` without being added to `everything_it_says` fails here instead of
     producing a plan whose one content is silently unseeable.
+
+    **Every *list*, and not every field, because that is what this rule is about.** The first
+    version said "every field" and was true only because every field was a list; adding
+    `the_change_it_makes` — a sentence about intent — made it false without anything being wrong.
+    A rule demanding every field is satisfied only by a plan that fills in everything, which is
+    what the rule explicitly refuses to demand, so this version says what the rule actually is:
+    every list the plan has, the emptiness rule looks at. The sentence is outside it on purpose,
+    because a statement with no file named cannot be implemented by anyone.
     """
-    every_field_the_plan_has = list(ImplementationPlan.model_fields)
+    every_list_the_plan_has = [
+        a_name
+        for a_name, a_field in ImplementationPlan.model_fields.items()
+        if _is_a_list_field(a_field)
+    ]
 
     what_the_rule_looks_at = list(_the_fields_the_emptiness_rule_looks_at())
 
-    assert every_field_the_plan_has == what_the_rule_looks_at, (
-        f"ImplementationPlan has {every_field_the_plan_has} and the emptiness rule looks at "
-        f"{what_the_rule_looks_at}. A field it does not look at is a field a plan can be made of "
-        f"and be refused for being empty"
+    assert every_list_the_plan_has == what_the_rule_looks_at, (
+        f"ImplementationPlan has the lists {every_list_the_plan_has} and the emptiness rule looks "
+        f"at {what_the_rule_looks_at}. A list it does not look at is a list a plan can be made "
+        f"of and be refused for being empty"
     )
+
+
+def _is_a_list_field(a_field: object) -> bool:
+    """Whether a model field holds a list, read from its own annotation."""
+    return str(getattr(a_field, "annotation", "")).startswith("list[")
 
 
 def _the_fields_the_emptiness_rule_looks_at() -> tuple[object, ...]:

@@ -32,8 +32,22 @@ class EmptyPlanError(Exception):
 
 
 class ImplementationPlan(BaseModel):
-    """Which files change, which tests are added, what is depended on, what must migrate."""
+    """Which files change, which tests are added, what is depended on, what must migrate.
 
+    **And what the change makes, which is the sixth field and the only one that is a sentence.**
+    It was missing, and the plan a real run produced and a real policy refused said why in one
+    sentence: *"nothing here tells an implementer what 'enforce the trust boundary' actually
+    requires"*. Five lists of paths carry no intent, and the implementer is handed this plan and
+    a checkout — no request, no requirements, no security report — so the intent has nowhere else
+    to live.
+
+    **It is deliberately outside the emptiness rule.** That rule asks whether a plan says anything
+    *to do*, and a sentence with no file named cannot be implemented by anyone, so the statement
+    is not a way to pass it. A field that both carried the reasoning and satisfied the rule would
+    be a loophole wearing the same name as the fix.
+    """
+
+    the_change_it_makes: str = ""
     files_to_change: list[str] = []
     files_to_add: list[str] = []
     tests_to_add: list[str] = []
