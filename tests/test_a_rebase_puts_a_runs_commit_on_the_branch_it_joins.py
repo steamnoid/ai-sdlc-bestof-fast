@@ -60,9 +60,33 @@ WHAT_THE_BASE_CHANGED = "what the base changed\n"
 
 
 def _git(where: Path, *what: str) -> str:
-    """One `git` call in one directory, and a failure a reader can act on rather than ignore."""
+    """One `git` call in one directory, and a failure a reader can act on rather than ignore.
+
+    **`-c user.name` and `-c user.email` on every call, so nothing here reads the machine's git
+    configuration.** A `git commit` with no identity configured fails with `Committer identity
+    unknown`, and this file has three commits in it — so on a machine with no global identity every
+    rebase test reported `TheRebaseFoundConflictsError` for a repository that was not in conflict.
+    **They passed locally and failed on CI, and only because this machine has one configured.** The
+    README says this suite needs no configuration and the workflow depends on that, so a test whose
+    answer depends on whose machine ran it is a test that is wrong rather than a machine that is.
+
+    **`git -c` reads nothing and writes nothing**, which is why it is on every call rather than on
+    the committing ones: a reader then has to look no further than this line to see that no test in
+    this file can be changed by a developer's `~/.gitconfig`.
+    """
     what_happened = subprocess.run(
-        ["git", *what], cwd=where, capture_output=True, text=True, check=False
+        [
+            "git",
+            "-c",
+            "user.name=a test run",
+            "-c",
+            "user.email=a-test-run@example.com",
+            *what,
+        ],
+        cwd=where,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if what_happened.returncode != 0:
         pytest.fail(f"git {' '.join(what)} in {where} failed: {what_happened.stderr}")
@@ -150,11 +174,36 @@ def _the_run_wrote_its_change_and_pushed_it(
 
 
 def _the_base_moved_on(the_code_work: Path, the_code: Path, what_it_changes: str) -> None:
-    """Somebody landed a change on the branch this run's pull request would join."""
+    """Somebody landed a change on the branch this run's pull request would join.
+
+    **The committer is named on the command and not configured on the working copy, and that is
+    a real finding rather than a tidy-up.** `_a_repository_nobody_may_write` does set
+    `user.email` and `user.name` on the working copy that first fills it — and this function is
+    handed `the_codes_own_copy`, a *different* clone that `_our_copy_of` made on its way to the bare
+    repository. Nothing configured that one, so on a machine with no global git identity the commit
+    failed with `Committer identity unknown`, the rebase then had nothing to replay, and three
+    tests reported `TheRebaseFoundConflictsError` for a repository that was not in conflict at all.
+
+    **Three tests failed on a GitHub runner and passed here, and only because this machine has a
+    git identity configured.** The suite is meant to need no configuration at all — the README says
+    so and the workflow relies on it — so a test that reads a developer's `~/.gitconfig` is a test
+    whose answer depends on whose machine ran it. `test_a_run_from_a_request_to_a_delivery.py` and
+    the two briefing tests already commit with `-c user.name=... -c user.email=...` for the same
+    reason, and this file had one place that did not.
+    """
     _git(the_code_work, "pull", "origin", "main")
     (the_code_work / what_it_changes).write_text(WHAT_THE_BASE_CHANGED, encoding="utf-8")
     _git(the_code_work, "add", ".")
-    _git(the_code_work, "commit", "-m", "the base moved on")
+    _git(
+        the_code_work,
+        "-c",
+        "user.name=somebody else",
+        "-c",
+        "user.email=somebody@else.example",
+        "commit",
+        "-m",
+        "the base moved on",
+    )
     _git(the_code_work, "push", "origin", "main")
 
 
@@ -248,8 +297,16 @@ def test_the_branch_is_only_moved_where_this_run_left_it(tmp_path: Path) -> None
     )
     (somebody_elses_work / "THEIR_FILE.md").write_text("theirs\n", encoding="utf-8")
     _git(somebody_elses_work, "add", ".")
-    _git(somebody_elses_work, "-c", "user.email=t@e.com", "-c", "user.name=t", "commit",
-         "-m", "somebody else's commit")
+    _git(
+        somebody_elses_work,
+        "-c",
+        "user.name=somebody else",
+        "-c",
+        "user.email=somebody@else.example",
+        "commit",
+        "-m",
+        "somebody else's commit",
+    )
     _git(somebody_elses_work, "push", "origin", f"HEAD:refs/heads/{THE_BRANCH_A_RUN_DELIVERS_ON}")
     where_the_branch_was_left = _the_branch_as_the_remote_holds_it(
         our_copy, THE_BRANCH_A_RUN_DELIVERS_ON

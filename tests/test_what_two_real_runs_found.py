@@ -771,8 +771,27 @@ def a_clone_of_a_real_repository(tmp_path: Path):
 
 
 def _git(where: Path, *what: str) -> str:
+    """One `git` call, with an identity named on it so nothing here reads the machine's config.
+
+    **`-c user.name` and `-c user.email` on every call**, because this file commits and a `git
+    commit` with no identity configured fails with `Committer identity unknown`. Three tests of
+    this repository failed on CI for exactly that while passing here, and the README says this
+    suite needs no configuration — so a test whose answer depends on whose machine ran it is a test
+    that is wrong, not a machine that is. `git -c` reads and writes no configuration file.
+    """
     what_happened = subprocess.run(
-        ["git", *what], cwd=where, capture_output=True, text=True, check=False
+        [
+            "git",
+            "-c",
+            "user.name=a test run",
+            "-c",
+            "user.email=a-test-run@example.com",
+            *what,
+        ],
+        cwd=where,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if what_happened.returncode != 0:
         pytest.fail(f"git {' '.join(what)} in {where} failed: {what_happened.stderr}")
