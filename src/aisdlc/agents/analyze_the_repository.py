@@ -22,6 +22,7 @@ from collections.abc import Callable
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import ValidationError
 
+from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.agents.requirements import EmptyRequirementsError, Requirements
 from aisdlc.agents.requirements_answer import RequirementsAnswer
 from aisdlc.domain.commissioned_request import CommissionedRequest
@@ -104,6 +105,7 @@ def the_prompt_to_analyze_a_repository(
         "rather than trimmed, because a conclusion this system did not ask for is one no\n"
         "human was ever shown.\n"
         "\n"
+        f"{the_rule_about_naming_a_file()}"
         f"Inspection of {repository.owner}/{repository.name}:\n"
         f"{inspection}"
     )

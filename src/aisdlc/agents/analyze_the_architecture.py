@@ -19,6 +19,7 @@ from aisdlc.agents.architecture_report import (
     EmptyArchitectureReportError,
 )
 from aisdlc.agents.architecture_report_answer import ArchitectureReportAnswer
+from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.domain.repository import Repository
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
 from aisdlc.llm.correction_budget import (
@@ -87,6 +88,7 @@ def the_prompt_to_analyze_the_architecture(
         "rather than trimmed, because a conclusion this system did not ask for is one no\n"
         "human was ever shown.\n"
         "\n"
+        f"{the_rule_about_naming_a_file()}"
         f"Inspection of {repository.owner}/{repository.name}:\n"
         f"{inspection}"
     )
