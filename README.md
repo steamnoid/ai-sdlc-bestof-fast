@@ -1110,6 +1110,18 @@ Stated rather than left to be discovered.
   materialised into a container's filesystem is a secret in the image.** A change asked to remove a
   hardcoded secret answered by generating and persisting one, and nothing in the pipeline noticed
   that the answer was worse than the thing it replaced. That is the finding worth the run's cost.
+- **Nothing in this pipeline notices that a change to a secret replaced it with a worse secret.**
+  The run above was asked to remove a hardcoded session secret and answered by generating one and
+  writing it to disk, and the only reason anybody knows is that the write broke the build. **A
+  generated secret persisted into a container's filesystem is a secret in the image**, and every
+  artifact the run produced — requirements, plan, verification — read clean. The gate is asked *is
+  this change good*, and this change looked good in every artifact.
+
+  **The gap is that no artifact carries the question**, which is a change to what a `Requirements`
+  or an `ImplementationPlan` *is*, decided in the glossary rather than in a test. **What is not
+  missing is the run's own words**: the implementer said what it did, the verification said the suite
+  passed, and the diff says `writeFileSync`. A reader of the pull request would have seen it in one
+  glance, and the pipeline's answer to that reader is a gate that reads prose about tests.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
