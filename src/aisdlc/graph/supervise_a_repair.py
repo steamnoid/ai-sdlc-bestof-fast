@@ -23,12 +23,14 @@ in a record.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
+from pydantic import ValidationError
 
 from aisdlc.domain.work_item import WorkItem
 from aisdlc.graph.repeat_budget import (
@@ -45,10 +47,18 @@ from aisdlc.graph.the_prompt_to_supervise_a_repair import (
     the_prompt_to_supervise_a_repair,
 )
 from aisdlc.graph.what_to_repeat import WhatToRepeat, WhereTheRunShouldStartAgain
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
+from aisdlc.llm.correction_budget import (
+    how_a_model_is_told_what_was_wrong,
+    may_this_run_keep_asking,
+)
 from aisdlc.llm.llm_configuration import a_configuration_from_the_environment
 from aisdlc.llm.model_factory import a_model_for
 from aisdlc.tools.what_people_said_about_a_work_item import (
+    AComment,
     a_comment_was_left,
     what_people_said_about,
 )
@@ -203,12 +213,11 @@ def supervise_a_repair(
         work_item.repository, work_item.work_item_id, projects_root
     )
 
-    the_decision = WhatToRepeat.model_validate(
-        ask_a_model_for(model, WhatToRepeat).invoke(
-            the_prompt_to_supervise_a_repair(
-                work_item, what_the_record_says.comments, what_stopped_the_run
-            )
-        )
+    the_decision = _the_supervisors_decision(
+        model,
+        work_item,
+        what_the_record_says.comments,
+        what_stopped_the_run,
     )
 
     a_comment_was_left(
@@ -264,6 +273,65 @@ def supervise_a_repair(
     raise ThereIsNoNodeForThatPlaceToStartAgainError(
         f"{the_decision.where_to_start_again} is one of the two places a run may be put back to "
         f"and neither has a node behind it, which is a change to this function and not a run"
+    )
+
+
+def _the_supervisors_decision(
+    model: BaseChatModel,
+    work_item: WorkItem,
+    what_the_card_says: list[AComment],
+    what_stopped_this_run: str,
+) -> WhatToRepeat:
+    """The decision, asked for again when the answer could not be read as one.
+
+    **This node was the only asker in the repository with no correction loop, and it is the one a
+    run reaches last.** Every agent asks inside `while may_this_run_keep_asking(...)`; this asked
+    once, so one answer the reader could not parse ended a run that had already paid for six gates,
+    a clone, a commit and two container suite runs — while the agents that reach their refusal in
+    seconds each had a budget and a prompt in reserve.
+
+    **The same budget and the same question, because it is the same kind of thing.** A supervisor's
+    answer is a model's answer like any other, and an answer that cannot be read is a wrong answer
+    rather than a refusal to answer. §0.3 says malformed output is *"rejected or repaired
+    deterministically"*, and being the only asker with no repair was the whole of the gap.
+
+    **The second question carries what was wrong**, because that is what the budget buys. A second
+    attempt repeating the first is not a repair — it is the run paying twice for the same answer —
+    and `how_a_model_is_told_what_was_wrong` is what the other nine loops use for exactly this.
+
+    **And it ends the way every other asker ends.** The ceiling is `TheRepeatBudgetRanOutError`,
+    not a way of this node's own, because the two ways a repair loop ends must not look alike in a
+    record — and this node had no second way of ending, which is the same gap seen from the other
+    side.
+    """
+    what_was_wrong: str | None = None
+    began_at = time.monotonic()
+    asked_so_far = 0
+    last: Exception | None = None
+    while may_this_run_keep_asking(asked_so_far, began_at):
+        asked_so_far += 1
+        try:
+            return WhatToRepeat.model_validate(
+                ask_a_model_for(model, WhatToRepeat).invoke(
+                    the_prompt_to_supervise_a_repair(
+                        work_item,
+                        what_the_card_says,
+                        what_stopped_this_run,
+                        what_was_wrong,
+                    )
+                )
+            )
+        except (
+            AModelAnsweredInAShapeThisSystemCannotReadError,
+            ValidationError,
+        ) as refused:
+            what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
+            last = refused
+
+    raise last if last is not None else TheRepeatBudgetRanOutError(
+        f"{THE_AGENT_THAT_SUPERVISES_A_REPAIR} was asked {asked_so_far} times and answered every "
+        "time with something that is not a decision. That is a run whose supervisor cannot rule, "
+        "and it stops on the budget like every other asker rather than in a place of its own."
     )
 
 

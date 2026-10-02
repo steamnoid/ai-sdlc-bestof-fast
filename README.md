@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 230 passed, 3 skipped, 8 deselected, ~10s, no network, no model, no credential, no container
+uv run pytest -q     # 232 passed, 3 skipped, 8 deselected, ~9s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -1061,10 +1061,17 @@ Stated rather than left to be discovered.
   a broader catch would convert a bug in a caller's own code into "the model misbehaved", which is
   the one claim a correction prompt must never make.
 
-  **The one place still not covered is the supervisor**, which asks its question with no correction
-  loop at all — so one malformed answer there ends a run that has already paid for everything up to
-  that point. It is named here rather than fixed in the same cycle, because giving it a budget and
-  a prompt is a decision rather than a mechanical edit.
+  **The supervisor was the one place still not covered, and it was the worst place to be the
+  exception**: it asked once, with no loop, while a run only reaches it after six gates, a clone, a
+  commit and two container suite runs. It now asks inside `may_this_run_keep_asking` like the other
+  nine, and re-asks with the refusal's words appended.
+
+  **It ends on its own refusal and not on `TheRepeatBudgetRanOutError`, and a test is what decided
+  that.** That error is a different fact — *the supervisor judged a repair worth trying and the
+  deployment overruled it*, so its judgement failed — and its own docstring names the trap:
+  *"a reader who cannot tell them apart goes to the wrong place."* A supervisor that never produced
+  a judgement has failed differently: it never judged. Raising the ceiling error would send a reader
+  to `AISDLC_REPEAT_BUDGET` for a run whose budget was never the problem.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
@@ -1173,6 +1180,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_the_supervisor_may_ask_again.py` | that the supervisor asks a second time when the first answer could not be read, that the second question carries what was wrong, and that a supervisor that cannot rule at all ends on its own refusal rather than on the repeat ceiling |
   | `test_a_model_answer_nobody_can_read_is_a_refusal.py` | that an answer the reader could not read becomes this package's own refusal — carrying the reader's own words, so a correction prompt can be written from it — and that a readable answer comes back untouched |
   | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
