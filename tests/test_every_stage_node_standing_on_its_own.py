@@ -78,6 +78,7 @@ from aisdlc.graph.clone_node import (
     TheRepositoryHasNotBeenClonedYetError,
     clone_the_repository_for_this_run,
 )
+from aisdlc.graph.deliver_node import THE_ARTIFACT_DELIVERY_PRODUCES
 from aisdlc.graph.discover_node import (
     THE_ARTIFACT_DISCOVERY_PRODUCES,
     discover_the_repository_in_this_run,
@@ -102,6 +103,9 @@ from aisdlc.graph.release_the_work_item_node import (
     WHERE_AN_AGENT_LETS_GO_OF_THE_WORK_ITEM,
 )
 from aisdlc.graph.router import (
+    THE_APPROVED_DELIVERY_IS_PUSHED_AND_OPENED as THE_RUN_WILL_BE_DELIVERED,
+)
+from aisdlc.graph.router import (
     THE_NEXT_ARTIFACT_IS_A_PLAN,
     THE_NEXT_ARTIFACT_IS_THE_ARCHITECTURE,
     THE_NEXT_ARTIFACT_IS_THE_CHANGE,
@@ -115,8 +119,14 @@ from aisdlc.graph.security_node import (
     THE_ARTIFACT_THE_SECURITY_ANALYST_PRODUCES,
     inspect_for_security_risk_in_this_run,
 )
+from aisdlc.graph.the_agents_a_run_reasons_with import THE_AGENTS_A_RUN_REASONS_WITH
 from aisdlc.graph.the_agents_that_leave_a_note import THE_AGENTS_THAT_LEAVE_A_NOTE
 from aisdlc.graph.transition_node import transition_the_work_item
+from aisdlc.graph.what_to_repeat import (
+    WhatOneAgentMustDoAgain,
+    WhatToRepeat,
+    WhereTheRunShouldStartAgain,
+)
 from aisdlc.store.the_record_of_a_run import the_notes_on_the_card
 from aisdlc.store.the_register_of_work_items import the_work_item_a_commission_registers
 from aisdlc.store.where_the_register_lives import holding_the_register, the_register_lives_at
@@ -781,6 +791,136 @@ def test_an_approved_artifact_leads_exactly_where_the_declared_pipeline_says(
     )
     assert what_each_approved_artifact_leads_to[THE_ARTIFACT_APPLYING_PRODUCES] == (
         THE_NEXT_ARTIFACT_IS_THE_DELIVERY
+    )
+
+
+def test_a_supervisors_verdict_cannot_clear_a_plan_written_after_it(a_projects_root: Path) -> None:
+    """A verdict about one plan is not a verdict about the plan that replaced it.
+
+    **A real run, and the run died at the delivery node with nothing to deliver.**
+
+        TheDeliveryHasNothingToDeliverError: PullRequestRequest is opened by the stage that
+        wrote it, and this run has none. The delivery node is wired after the node that builds
+        the request.
+
+    The run implemented the plan, the verification found something, the supervisor answered
+    *rewrite the plan*, and the planner wrote a second plan. The gate approved that second plan,
+    **the router sent the run straight to the node that pushes and opens a pull request, and it
+    had never built one.** The symptom is a missing artifact; the cause is a route that skipped
+    the two stages that write one.
+
+    **And the deeper half, which is why this is not just a wrong destination.** The supervisor's
+    verdict was written against the *first* plan, when the implementer was at fault. Read against
+    the *second* plan, `the implementer must not repeat` means only that the implementer was not
+    the stage that was wrong — and `WhatToRepeat` carries a verdict for **every** agent in the
+    run, so that verdict is written whether or not the agent ever ran. **It is a verdict about who
+    is at fault, not a statement that there is nothing left to do**, and the `repair` channel is
+    written once by the supervisor and never cleared, so a verdict about a superseded artifact
+    survives into the approval of its replacement.
+
+    A change delivered here would be the **first** plan's change under the **second** plan's
+    approval — the run would report a delivery of something nobody implemented against what a
+    person read.
+    """
+    a_verdict_naming_the_planner_as_the_one_at_fault = WhatToRepeat(
+        what_each_agent_must_do=(
+            *_a_verdict_for_every_agent_except(
+                THE_DEVELOPER_PLANNING_AGENT,
+                because="the plan named a test file the runner never opens",
+            ),
+        ),
+        where_to_start_again=WhereTheRunShouldStartAgain.THE_CHANGE_IS_PLANNED_AGAIN,
+        what_has_not_changed="the planned test file is still outside the set vitest collects",
+    )
+    a_plan_that_has_been_approved_a_second_time = {
+        **_a_registered_state(a_projects_root),
+        "presented_artifact_id": THE_ARTIFACT_PLANNING_PRODUCES,
+        "decisions": [
+            _an_answer_about(THE_ARTIFACT_PLANNING_PRODUCES, approved=True, why="this one is right")
+        ],
+        "repair": a_verdict_naming_the_planner_as_the_one_at_fault,
+    }
+
+    where_the_run_goes = where_a_gate_outcome_leads(a_plan_that_has_been_approved_a_second_time)
+
+    assert where_the_run_goes == THE_NEXT_ARTIFACT_IS_THE_CHANGE, (
+        f"a second, freshly approved plan was routed to {where_the_run_goes!r}. The supervisor's "
+        "verdict was written against the plan this one replaced, and it says the *planner* was at "
+        "fault — so nothing has implemented this plan at all. Skipping the implementation delivers "
+        "the previous plan's change under this plan's approval, which is the delivery of something "
+        "nobody implemented against what a person read"
+    )
+
+
+def test_a_run_whose_implementer_was_cleared_still_builds_the_delivery(
+    a_projects_root: Path,
+) -> None:
+    """Wherever a cleared implementer sends a run, the delivery must be *built*, not assumed.
+
+    **The half of the same defect that a reader sees as a crash.** Even if skipping the
+    implementation were right — and this test does not claim it is — the destination could not be
+    the node that *pushes and opens* a pull request. `PullRequestRequest` is written by
+    `write_what_this_run_would_deliver`, and between a decision to deliver and that node sit a
+    pickup, a transition, and `describe_the_delivery_for_this_run`. Routing past them asks the
+    delivery node for an artifact nothing on the path built, and it refuses by name.
+
+    **Asserted as a property of every delivery route rather than of one verdict,** because the
+    failure is not about the supervisor's judgement — it is that the two routes out of the delivery
+    stage are different nodes and the wrong one looks like the right one.
+    """
+    a_verdict_clearing_the_implementer = WhatToRepeat(
+        what_each_agent_must_do=_a_verdict_for_every_agent_except(
+            None,
+            because="nothing in this run's card says another stage was wrong",
+        ),
+        where_to_start_again=WhereTheRunShouldStartAgain.THE_CHANGE_IS_PLANNED_AGAIN,
+        what_has_not_changed="nothing has been decided otherwise since the verdict",
+    )
+    an_approved_delivery = {
+        **_a_registered_state(a_projects_root),
+        "presented_artifact_id": THE_ARTIFACT_DELIVERY_PRODUCES,
+        "decisions": [
+            _an_answer_about(THE_ARTIFACT_DELIVERY_PRODUCES, approved=True, why="deliver it")
+        ],
+        "repair": a_verdict_clearing_the_implementer,
+    }
+
+    assert where_a_gate_outcome_leads(an_approved_delivery) == THE_RUN_WILL_BE_DELIVERED, (
+        "the artifact the delivery stage wrote was approved, so the run pushes and opens it — "
+        "this is the route that is right, and it is asserted here so that the route which is wrong "
+        "is a different constant rather than the same one reached from a different branch"
+    )
+    assert THE_RUN_WILL_BE_DELIVERED != THE_NEXT_ARTIFACT_IS_THE_DELIVERY, (
+        "these two are the same node, so a cleared implementer cannot be tested at all: the whole "
+        "point is that one of them builds a `PullRequestRequest` and the other expects one"
+    )
+
+
+
+def _a_verdict_for_every_agent_except(
+    the_one_at_fault: str | None, because: str
+) -> tuple[WhatOneAgentMustDoAgain, ...]:
+    """A supervisor's answer, which is a verdict for **every** agent and not only the guilty one.
+
+    **`WhatToRepeat` refuses an answer that leaves anyone out**, and that refusal is the whole
+    reason this helper exists rather than a list written at the call site: an answer about the
+    planner and the implementer and nothing about the other five is indistinguishable from an
+    answer about all seven, and a run then either repeats stages that did nothing or skips the
+    ones that did. An agent nobody spoke about is refused by name.
+
+    **So every one of the seven carries a verdict here, and the five that never ran carry one
+    too** — which is the fact the router went wrong on. "The implementer must not repeat its
+    work" is written whether or not the implementer ever ran, because the question was asked of
+    every agent. A verdict about **who is at fault** is therefore not a statement that **there is
+    nothing left to do**, and reading it as one is how a run delivers a change nothing implemented.
+    """
+    return tuple(
+        WhatOneAgentMustDoAgain(
+            agent=an_agent,
+            must_repeat_its_work=an_agent == the_one_at_fault,
+            why=because if an_agent == the_one_at_fault else "this stage is not at fault",
+        )
+        for an_agent in THE_AGENTS_A_RUN_REASONS_WITH
     )
 
 
