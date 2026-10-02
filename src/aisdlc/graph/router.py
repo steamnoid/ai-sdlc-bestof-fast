@@ -42,9 +42,6 @@ from aisdlc.graph.discover_node import THE_ARTIFACT_DISCOVERY_PRODUCES
 from aisdlc.graph.plan_node import THE_ARTIFACT_PLANNING_PRODUCES
 from aisdlc.graph.qa_node import THE_ARTIFACT_THE_QA_ANALYST_PRODUCES
 from aisdlc.graph.security_node import THE_ARTIFACT_THE_SECURITY_ANALYST_PRODUCES
-from aisdlc.graph.the_agents_a_run_reasons_with import (
-    THE_DEVELOPER_IMPLEMENTATION_AGENT,
-)
 
 THE_RUN_IS_OVER = "write_how_this_run_ended"
 THE_NEXT_ARTIFACT_IS_THE_PROPOSAL = "offer_the_work_item_to_the_product_analyst"
@@ -83,27 +80,6 @@ WHERE_AN_APPROVED_ARTIFACT_LEADS = {
 }
 
 
-def a_repair_cleared_the_implementer(state: AgentState) -> bool:
-    """Whether a supervisor answered this run and said the implementation needs no work.
-
-    **`None` and an empty answer are not the same thing, and the difference is every run this
-    pipeline has ever run.** A run that never asked a supervisor has no `repair` in its state, and
-    treating that as a clearance would deliver an unimplemented change on the next run with nothing
-    anywhere saying so. A supervisor that named nobody — which is a decision, and one `WhatToRepeat`
-    allows — is also not a clearance: the verdict is about which stage was wrong, not about which
-    stage is unnecessary.
-    """
-    the_repair = state.get("repair")
-    if the_repair is None:
-        return False
-
-    return not any(
-        verdict.agent == THE_DEVELOPER_IMPLEMENTATION_AGENT
-        and verdict.must_repeat_its_work
-        for verdict in the_repair.what_each_agent_must_do
-    )
-
-
 def where_a_gate_outcome_leads(state: AgentState) -> str:
     """The next node, from two facts: whether a person said yes, and what they said it about.
 
@@ -111,21 +87,32 @@ def where_a_gate_outcome_leads(state: AgentState) -> str:
     answered and which has just appended the answer being read, so the list has one and it is
     the right one. That is the same division of labour as before: a missing answer is the
     recording node's refusal to raise, not this function's to invent.
+
+    **And there is no route out of here that reads the `repair` channel, which is a removal rather
+    than a tidying.** A supervisor's verdict once sent an approved plan straight to the node that
+    pushes and opens a pull request, on the reading that "the implementer must not repeat its
+    work" meant there was nothing to implement. A real run took that route and died:
+
+        TheDeliveryHasNothingToDeliverError: PullRequestRequest is opened by the stage that
+        wrote it, and this run has none.
+
+    The crash is the smaller half. **`WhatToRepeat` carries a verdict for every agent in the run**,
+    so the implementer carries one whether or not it ever ran, and a verdict about **who is at
+    fault** is not a statement that **there is nothing left to do**. Reading it as one skipped a
+    whole implementation and would have delivered the previous plan's change under the new plan's
+    approval — a delivery of something nobody implemented against what a person read.
+
+    **The removal is total because the branch had no true case at all.** `repair` is written in
+    exactly one place, by the supervisor, which is only reached from a refusal. After a refusal
+    either the implementer must repeat — the table's own row, which is not this branch — or the
+    planner does, the plan is a *different* plan, and nothing has implemented it. So the branch
+    fired in the one situation where it was wrong and in no situation where it was right, and it
+    had **no test and no claim in the README** behind it: an untested shortcut is not a rule.
     """
     if not state["decisions"][-1].approved:
         return THE_RUN_IS_OVER
 
     approved_artifact = state["presented_artifact_id"]
-
-    # **A verdict that cleared the implementation sends the run to the delivery instead.**
-    # `WhatToRepeat` asks the supervisor about every agent and the router is where an answer
-    # becomes a destination, so this is the one place the verdict is honoured. Skipping the
-    # implementation is a whole container suite run on each side of the change, plus a commit
-    # attempt, for a stage nobody objected to.
-    if approved_artifact == THE_ARTIFACT_PLANNING_PRODUCES and a_repair_cleared_the_implementer(
-        state
-    ):
-        return THE_APPROVED_DELIVERY_IS_PUSHED_AND_OPENED
 
     if approved_artifact not in WHERE_AN_APPROVED_ARTIFACT_LEADS:
         raise NoRouteIsDeclaredForThisArtifactError(
