@@ -1153,6 +1153,36 @@ Stated rather than left to be discovered.
   writes "nothing has changed" and then asks for another turn is a judgement this pipeline cannot
   overrule by prompting**, which puts the claim where this repository puts every other claim about
   reasoning: `evals/`, measured rather than asserted.
+- **A supervisor reported a measurement nobody took, three times, and the run believed it.** A real
+  run wrote a regression test that fails on `expect.skip` and passes without it — **verified by
+  hand, running both variants**: `Tests 1 failed` on the file as it stands, `Tests 1 passed` after
+  the fix. The plan named the file to change and **left `tests_to_add` empty**, so
+  `refuse_a_change_nothing_observed` returned before running anything — which is its documented gap,
+  and correct: a plan that adds no test has nothing to observe.
+
+  **So no run ever measured the third case, and the supervisor filled the gap from its own note:**
+
+  > the pass/fail result of `tests/unit/wellbeingt-17-docker-skip-api.test.ts` has not moved between
+  > attempts: **it passed with the change applied and passed again with the change undone**
+
+  It said that three times, adding detail each round, and the run ended on
+  `TheSupervisorJudgedThisIsNotRepairingError`. **The claim is false and was never checked** —
+  `git checkout HEAD~1` on the changed file leaves the new test in place, and that test fails on
+  exactly the content the checkout restored.
+
+  **Two findings, and the second is the one worth acting on.** A supervisor that writes a number it
+  did not measure is the same defect this repository has already recorded — a model answering
+  instead of being asked. But **the reason it felt free to is the first**: a documented gap in a
+  rule read as a *silence*, and a silence in a card reads as *nothing happened*. **The gap is named
+  in `refuse_a_change_nothing_observed`'s own docstring**, so a reader of the code knows; a reader of
+  a run's card does not, and the card is where a supervisor reads from.
+- **A gate approved a plan whose `tests_to_add` was empty while the requirements named a new test
+  file.** The request said *add one new test file, `tests/unit/wellbeingt-17-docker-skip-api.test.ts`*;
+  the plan changed one file and named no test; the gate passed it, and the implementer wrote the test
+  anyway — a file the plan did not name, which `refuse_a_change_nothing_observed` then had no way to
+  look at. **The gate compares a plan against the requirements, and a requirement that names a path
+  is not yet something either artifact is obliged to contain.** Nothing here is a wrong value; it is
+  a check that does not exist, and the run it let through is the run above.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
