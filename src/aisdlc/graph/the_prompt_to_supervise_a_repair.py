@@ -67,6 +67,7 @@ def the_prompt_to_supervise_a_repair(
     work_item: WorkItem,
     comments: list[AComment],
     what_stopped_the_run: str,
+    what_was_wrong_about_the_last_answer: str | None = None,
 ) -> str:
     """The question put to the model about one repair of one work item.
 
@@ -110,4 +111,27 @@ def the_prompt_to_supervise_a_repair(
         "naming what has not changed. Do not repeat an agent's work to look busy: a second attempt "
         "costs a repository's own test suite in a container, and three attempts at a plan that "
         "names no product file is a circle, not a repair.\n"
+    ) + _what_was_wrong_with_the_last_answer(what_was_wrong_about_the_last_answer)
+
+
+def _what_was_wrong_with_the_last_answer(what_was_wrong: str | None) -> str:
+    """The refusal that bought this question appended, or nothing at all for a first question.
+
+    **Appended and not woven in, for the reason this exists.** A second question repeating the
+    first buys the same answer a second time, and what was wrong with the last one is the only fact
+    a model cannot work out on its own — the nine other loops in this repository spend their budget
+    on exactly this sentence, and a supervisor that skipped it would be spending its budget on a
+    re-ask.
+
+    **Nothing for the first question**, so the common case reads exactly as it did before this
+    parameter existed. An empty paragraph in every prompt would be a change nobody could see the
+    point of, and a prompt that always carries a section about a previous answer teaches a reader
+    that there always was one.
+    """
+    if what_was_wrong is None:
+        return ""
+
+    return (
+        "\n\nYour last answer could not be used, and this is what was wrong with it:\n\n"
+        f"{what_was_wrong}\n"
     )

@@ -1173,6 +1173,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_the_supervisor_may_ask_again.py` | that the supervisor asks a second time when the first answer could not be read, that the second question carries what was wrong, and that a supervisor that cannot rule at all ends on its own refusal rather than on the repeat ceiling |
   | `test_a_model_answer_nobody_can_read_is_a_refusal.py` | that an answer the reader could not read becomes this package's own refusal — carrying the reader's own words, so a correction prompt can be written from it — and that a readable answer comes back untouched |
   | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
