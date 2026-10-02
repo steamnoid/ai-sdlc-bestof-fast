@@ -25,7 +25,12 @@ from collections.abc import Callable, Sequence
 from aisdlc.agents.verification_report import VerificationReport
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_clone_repository import ClonedRepository
-from aisdlc.tools.run_tests import SuiteOutcome, a_suite_to_run, the_tests_in
+from aisdlc.tools.run_tests import (
+    SuiteOutcome,
+    a_suite_to_run,
+    the_test_files_the_suite_reported_running,
+    the_tests_in,
+)
 
 RunTheSuite = Callable[[ClonedRepository, Repository], SuiteOutcome]
 
@@ -209,7 +214,24 @@ def the_tests_the_suite_never_ran(
 
 
 def _the_suite_mentioned(what_the_suite_said: str, a_test: str) -> bool:
-    """Whether the suite's own output ends any of its lines with this test's path."""
+    """Whether the suite's own output names this test, in any of the shapes a runner prints it.
+
+    **Three shapes, and the first version of this read only the first.** A vitest report puts the
+    path at the *end* of a line after a mark (`✓ tests/unit/x.test.ts (2 tests)`), so an
+    `endswith` was enough — and it was written against the one runner the first real delivery
+    targeted. Then `pytest --collect-only -q` puts it at the *start* of a line followed by a node
+    id (`tests/x.py::test_name`), and the same check answered False for a suite that had plainly
+    named the test.
+
+    **That is not a near miss, it is the same defect that made six deliveries hollow**: a check
+    read against one runner and trusted on another. The parser that reads both already existed —
+    `the_test_files_the_suite_reported_running`, whose docstring quotes the pull request this
+    defect produced — and had no caller outside its own test. **It has one now.**
+    """
+    for a_file_the_suite_named in the_test_files_the_suite_reported_running(what_the_suite_said):
+        if a_file_the_suite_named == a_test:
+            return True
+
     for a_line in what_the_suite_said.splitlines():
         if a_line.rstrip().endswith(a_test):
             return True
