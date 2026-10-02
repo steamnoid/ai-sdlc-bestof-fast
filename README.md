@@ -1039,15 +1039,38 @@ Stated rather than left to be discovered.
   thing to ask a model for on purpose. `tests/test_the_supervisor_deciding_what_to_repeat.py` and
   a whole run through the real graph both drive the routing; what neither can do is make a real
   model misbehave on demand.
-- **A run has not reached `DONE` on a real repository.** Every claim above about the merge, the
-  conflict and the rebase is proven against a transport that answers, not against GitHub — and
-  the two runs that got furthest were stopped by the *gate*, not by the merge. What has been
-  proven on a real model against a real clone is: eight gates answered by a policy, a real
-  `git clone`, a real container running the repository's own suite on both sides of a change, and
-  **the repair supervisor firing for the first time and catching a test file the runner never
-  opens**. What is not proven is the tail — a pull request opened against a real remote, checks
-  read on its head commit, and that exact commit merged. The tenth section above says why the
-  seventh is the deepest a run has got, and the merge is one node beyond it.
+- **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
+  above about the merge, the conflict and the rebase is proven against a transport that answers, not
+  against GitHub. What has been proven on a real model against a real clone is: **eight gates
+  answered by a policy, with the eighth reached**, a real `git clone`, a real container running the
+  repository's own suite on both sides of a change, the repair supervisor firing and catching a test
+  file the runner never opens, and the **whole delivery stage walking end to end** — the pickup, the
+  transition, `describe_the_delivery_for_this_run`, `write_what_this_run_would_deliver`, the handover
+  and the eighth gate's own answer.
+
+  **And the eighth gate refused it, for a reason that was right.** The `PullRequestRequest` body
+  listed the changed files and a claim that the suite was green on both sides, and said nothing about
+  what now happens when `JWT_SECRET` is absent — which the request had been asked to record. The
+  policy's own words:
+
+  > The `PullRequestRequest` never records the chosen missing-JWT_SECRET behaviour, which the work
+  > item explicitly requires; the body only lists changed files, a `.test.ts` test, and a
+  > passed-suite claim. State how a missing secret now behaves and how existing no-secret unit tests
+  > remain supported before this run continues.
+
+  **So the pipeline's depth is eight gates and its last refusal was a person-shaped judgement about
+  whether a reviewer could tell what the change does** — which is the eighth gate's reason to exist.
+  What is not proven is the tail: a pull request opened against a real remote, checks read on its
+  head commit, and that exact commit merged. **The merge is one node beyond the eighth gate and has
+  never been reached.**
+- **A refusal carries advice the pipeline has no way to act on, and that is visible twice in a row.**
+  Two runs in a row ended at a gate with the refusal naming exactly what to change — one about the
+  pull request body, the next about a QA scenario that inspects only two files and would therefore
+  pass if the literal were moved into a shared definition. Both refusals were correct and both are
+  free advice, and **a gate refusal is a decision rather than a gap**, so the run ends and the advice
+  dies with the log. A node that handed a refused artifact's reason back to the supervisor is the
+  obvious seam and it does not exist; whether it should is a question about what the gates are for,
+  and it is recorded rather than answered.
 - **The upstream repository cannot be a delivery target, for two reasons that are facts about the
   world rather than about this system.** `paligakrzychu/wellbeing-tracker-public` has **no check
   runs at all** — no workflows, `total_count: 0` on `main` and on every pull request's head — so
