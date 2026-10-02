@@ -30,8 +30,11 @@ from pathlib import Path
 
 import pytest
 
+from aisdlc.agents import analyze_the_repository
+from aisdlc.agents.analyze_the_repository import the_prompt_to_analyze_a_repository
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.agents.plan_the_change import _every_test_is_where_the_suite_will_look_for_it
+from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.inspect_the_repository import (
@@ -171,6 +174,95 @@ def test_the_security_analyst_is_shown_the_code_and_not_only_the_manifests(
         "source files are not in it — a summary of a project is not a copy of it. If this fails, "
         "the two inspections have been merged and the security analyst's evidence is now paid "
         "for by every discovery call."
+    )
+
+
+def test_the_product_analyst_is_shown_the_code_and_not_only_the_manifests(
+    a_symlinked_projects_root: tuple[Path, Path],
+) -> None:
+    """The analyst is handed a request naming a file, and it is handed that file's contents.
+
+    **This is the same defect as the security analyst's, in the stage beside it, and it was still
+    there after the first one was fixed.** `an_inspection_of` was built for discovery, whose job is
+    a repository's shape; the security analyst was later wired to the same one, reasoned from
+    filenames, and a real run's gate refused the whole report. `an_inspection_of_the_code` was
+    written to fix that, and it was given to security and to briefing and to nothing else — while
+    the product analyst, the one stage whose question is *what is being asked of this repository*,
+    kept the shape-only inspection.
+
+    **A real run found it, and the way it presented is the reason this test is here.** A person
+    asked for a cookie contract to be tested, and named the file that implements it. The analyst
+    wrote four requirements about that contract and then listed as an ambiguity — "what
+    `buildSetCookie` actually returns, since the request forbids changing product code and a
+    function that expires the cookie some other way would make the two instructions contradict" —
+    **and the gate refused on precisely that**, because the analyst was asking the repository a
+    question the inspection had the answer to. The file is in the clone. The analyst was simply
+    never shown it.
+
+    **An ambiguity the repository can answer is the system refusing to look.** It is not a
+    cautious question and it is not a finding about the request: the run has a clone, the file is
+    in it, and the answer costs one read. What it produces instead is a gate that refuses a run
+    for something nobody could have known, which is the one failure mode a person watching a board
+    cannot tell from a run that was right to stop.
+    """
+    the_real_one, _ = a_symlinked_projects_root
+    the_clone = _a_clone_at(the_real_one)
+
+    (the_clone.path / "web-app" / "src" / "lib").mkdir(parents=True)
+    (the_clone.path / "web-app" / "src" / "lib" / "auth.js").write_text(
+        "export function buildSetCookie(token) {\n"
+        "  return `wt_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800`;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    what_the_analyst_is_shown = the_prompt_to_analyze_a_repository(
+        an_inspection_of_the_code(the_clone),
+        _A_REPOSITORY,
+        a_request_about("test that the session cookie is HttpOnly"),
+    )
+
+    assert "HttpOnly" in what_the_analyst_is_shown, (
+        "the product analyst's question did not carry the file the request named, so the analyst "
+        "cannot know what the function returns and will say so in an ambiguity. A real run's gate "
+        "refused the run for exactly that, and it was right to: the repository could answer it "
+        "and the inspection had not been asked."
+    )
+
+
+def test_the_product_analyst_is_handed_the_inspection_that_carries_code() -> None:
+    """The node builds its question out of the code inspection, and not out of the shape one.
+
+    **The test above proves the inspection is capable of this; this one proves the node asks for
+    it.** They are different failures and only the second is a bug in the pipeline: a function
+    that can carry code and a node that never asks for it produce a run that looks correct and
+    reasons blind, which is the shape of defect this repository has now found three times —
+    something the gate did right, and an engine underneath it that did not.
+
+    **Read from the source rather than called, because the node would have to run.** `propose_
+    requirements` is handed a model, and driving it means building one, standing up a checkpointer
+    and letting a real provider answer. What is being asked here is one name, and the honest way to
+    ask it is to read what the function named. A test that had to run the node to learn which
+    inspection it asked for would be a test that could not fail for the reason it exists.
+    """
+    the_node = ast.parse(Path(analyze_the_repository.__file__).read_text())
+    the_inspections_the_node_asks_for: set[str] = set()
+
+    for a_statement in ast.walk(the_node):
+        if not isinstance(a_statement, ast.Call):
+            continue
+        what_was_called = a_statement.func
+        if not isinstance(what_was_called, ast.Name):
+            continue
+        if what_was_called.id.startswith("an_inspection_of"):
+            the_inspections_the_node_asks_for.add(what_was_called.id)
+
+    assert the_inspections_the_node_asks_for == {"an_inspection_of_the_code"}, (
+        f"the product analyst asks for {sorted(the_inspections_the_node_asks_for)} rather than "
+        "for an_inspection_of_the_code alone. A shape-only inspection is a repository's listing "
+        "and its manifests, which is right for a discovery report and is not enough for a stage "
+        "whose question is what is being asked of this repository — and a real run's gate refused "
+        "a whole run for an ambiguity the file in the clone would have answered."
     )
 
 

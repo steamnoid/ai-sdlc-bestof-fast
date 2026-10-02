@@ -20,7 +20,9 @@ change, and a pull request comes out with every decision in the trail.
 ```
 
 Eight gates, and a person is asked at every one. A refusal ends the run where it was refused,
-with the reason on the card.
+with the reason on the card. **After the eighth gate the run reads the checks on the commit GitHub
+says the pull request points at, merges that exact commit, and only then marks itself delivered** —
+so `DONE` means merged rather than offered.
 
 ---
 
@@ -73,28 +75,139 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 54 passed, 1 skipped, 5s, no network, no model, no credential, no container
+uv run pytest -q     # 147 passed, 3 skipped, ~8s, no network, no model, no credential, no container
 
-# The one test that asks a model runs when a deployment has stated LLM_PROVIDER / LLM_ENDPOINT /
-# LLM_MODEL, and skips with the reason printed when it has not. To watch it judge:
+# The three skips are the real tier, and each one prints what it is missing: one needs a real
+# model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
+# default run and skipped rather than deselected, because a skip that says why is a claim and a
+# deselection is silent — see `test_every_marker_this_repository_declares_is_carried_by_a_test.py`.
+# To watch the model judge:
 set -a && . ./.env && set +a && uv run pytest -q -s \
   tests/test_a_real_model_judging_a_real_refusal.py
 
-# The e2e tier is not separated here: `uv run pytest` is the whole suite, and a live-model run is
-# driven through the same board by starting the server with a `.env` in place.
+# A live-model run through the board is driven through the same board by starting the server with
+# a `.env` in place — there is no separate tier to select.
 ```
 
 One file, and it is the whole product: a person posts a repository and a sentence over real
 HTTP, answers eight gates one at a time, and gets a pull request — with a **real `git clone`** of
 a repository made locally on the spot, the real state machine, the real gate, the real register
-and a real board. Four things are replaced and each is named where it is replaced: the seven
-agents do not call a model, the two delivery collaborators do not call GitHub, and the clone is
+and a real board. Three things are replaced and each is named where it is replaced: the seven
+agents do not call a model, the five delivery collaborators do not call GitHub, and the clone is
 fetched from a path rather than a host. Everything else is production code on its real path.
 
 It asserts the things that would be a lie otherwise: that a card exists before the run has done
-anything, that the work item really is at `DONE` when the board says delivered, that a refusal
-leaves one decision and no approval, and that an `aisdlc-` identifier posted as a decider is
-refused with the gate's own sentence.
+anything, that the work item really is at `DONE` when the board says delivered, that the run read
+the checks and merged that commit before it said it was delivered, that a refusal leaves one
+decision and no approval, and that an `aisdlc-` identifier posted as a decider is refused with the
+gate's own sentence.
+
+---
+
+## After the eighth gate: the suite, and the merge
+
+**The eighth gate approves a delivery. It never merged anything.** Until now the pipeline ended at
+a pull request and marked the work item `DONE`, which is a word that means *merged* to anybody
+reading a board and did not mean it here: the branch was pushed, the pull request was open, and a
+maintainer had it in their review list. **Two nodes now sit between the delivery and `DONE`** —
+read the checks, then merge that commit — and there is no ninth gate, because a merge is the
+consequence of a gate somebody already answered rather than a question somebody has not.
+
+**"Green" is about the commit being merged, and the pull request is asked which commit that is.**
+The tool reads the pull request first and takes `head.sha` from GitHub's own answer, then reads
+that commit's check runs. Asked about a *branch* instead, GitHub answers with the latest run on
+that branch — which after a rebase, an "update branch" or a second run pushing the same branch is
+a green run describing a commit nobody is merging. **The test reads the request back out of the
+transport**, because the failure this guards is a tool working perfectly on the wrong commit.
+
+| what GitHub says | what this system does |
+|---|---|
+| no check runs at all | refused — nothing was proved, and a repository with no checks is not a green repository |
+| any check `failure`, `timed_out`, `cancelled`, `action_required`, `stale`, `startup_failure` | refused, naming the check and its conclusion — red does not become green by waiting |
+| any check still running, or a conclusion that is not `success` | refused — **an absent verdict is never green**, and `skipped` and `neutral` are absences |
+| a `404` about the pull request | refused as its own fact, because "GitHub did not tell us" and "the suite is still running" send a reader to two different places |
+
+**A merge is asked about before it is attempted, and the word "not mergeable" is never read.**
+GitHub answers *"Pull Request is not mergeable"* for a pull request that conflicts with its base —
+which can be rebased and tried again — **and** for a base branch that is protected, which cannot
+be merged into at all. Classifying the refusal by that phrase calls the second one a conflict and
+sends a person after a merge conflict on a branch that is protected on purpose. So `mergeable` is
+read first: `false` is the only thing that makes this a conflict, `null` (GitHub computes
+conflicts in the background) is a third refusal that waits for nothing, and a refusal by the merge
+itself is quoted rather than re-interpreted.
+
+**The merge is given the commit, and GitHub is the one who refuses a head that moved.** The sha
+is in the request body, which is `gh pr merge --match-head-commit` in a different tool: the checks
+were read about one commit, and a head that moved between the two is a commit nothing was proved
+about. GitHub answers 409 and this system quotes it, rather than noticing afterwards. **No merge
+method is chosen** — merge, squash or rebase is that repository's setting, and a system that picked
+one would silently change how every repository it delivers to records history.
+
+**A collision has a name, two named repairs, and nothing else.**
+`WhatToDoAroundAConflict` is a closed set a model chooses from: three conflicts — a pull request
+that will not merge, an opportunity somebody already filed, two runs that changed one file — each
+with its own two repairs, and an answer outside the set, or a repair belonging to a different
+conflict, or a repair with no reason behind it, is `AConflictNobodyCouldRuleOnError`.
+
+**One of the three is asked by a node now, and it is the one a delivery reaches.**
+`settle_the_conflict_in_this_run` is what the merge node hands a `mergeable: false` to, **in
+GitHub's own sentence** — the same `what_stopped_this_run` channel a refusal travels to the repair
+supervisor in, because a decision made on a summary of a conflict is a decision about the summary.
+The decision is announced on the card before it is acted on, and the reason in it is the model's:
+this system writes no reason of its own next to a decision about somebody else's repository.
+
+| the repair | what happens |
+|---|---|
+| `rebase it and try again` | the commit is put on the branch it joins and the run goes back to the node that reads the checks — **not** to the merge |
+| `leave it open and say why` | the run ends at `write_how_this_run_ended`, its work item still at the gate it was refused after |
+
+**A rebase goes back to the suite and not to the merge, and that is the whole argument.** The merge
+is handed the commit the checks were read about, and a rebase produces a *different* commit — so a
+repair that went straight back to the merge would be asking GitHub to land a sha no check ever ran
+on, with GitHub's own 409 as the only thing standing between the run and an unproved merge. The
+suite node reads the checks **on the commit the pull request now points at**, which is the only
+commit a merge can be justified by; if nothing has run there yet, the run stops with the suite's own
+refusal. **`leave it open` is not `DONE`** — `DONE` means merged, and the repair chosen there is
+precisely a decision not to put the change in somebody's base branch.
+
+**What ends the run is bounded, and the bound belongs to the tool.** A merge refused as a conflict
+sends the run to the repair; a rebase that would change nothing leaves the pull request in front of
+the same `mergeable: false`; a run with no bound asks a model the same question about the same facts
+until the runtime's recursion limit stops it. The tool refuses that rebase by name, so the second
+visit stops.
+
+## The rebase under that repair, and the one rule it has to keep
+
+`git.rebase_the_branch_a_run_pushed` is three `git` calls and a decision between them: fetch the
+branch the pull request would join **from `upstream`**, replay this run's commit on it, and put the
+result on the branch this run delivered **on `origin`**. Every address is a remote's *name*. The
+obvious way to fetch is to compose a URL, and a URL that needs a credential is a URL git prints
+back inside its own error message — which is where this repository's error messages come from, and
+which is why `the_clone_url_of` refuses to read the environment at all.
+
+**The branch may be moved only where this run left it, and git is what checks that.**
+`create_a_branch_on_a_remote` refuses to push a branch that is already on the remote, because a run
+must never move a branch somebody else is using — and a rebase has to do precisely that, so the
+refusal could not be relaxed. It is stated instead: the commit the branch is expected to be at goes
+into the push as a **lease** (`--force-with-lease=refs/heads/<branch>:<sha>`), which git compares
+against the branch *inside the push that would move it*. A read of the branch beforehand would leave
+a window between the read and the push, and what that window admits is somebody else's commit,
+destroyed. A lease git refuses is not read as "somebody else pushed": this system will not announce
+a cause a remote has not stated, so the refusal says which condition it gave git and quotes git.
+
+**A rebase that would change nothing is refused by name, and that is what stops a run going round.**
+A merge refused as a conflict sends the run to the repair; a rebase that changes nothing leaves the
+pull request in front of the same `mergeable: false`; the run reaches the repair again with the same
+facts and walks until the runtime's recursion limit. `git merge-base --is-ancestor FETCH_HEAD HEAD`
+answers the question, so the tool refuses rather than reporting a repair that moved nothing — **a
+decision taken once about a fact that has not changed is not a decision**, and this is said where
+the fact lives rather than left for a node to notice on a second visit.
+
+**A rebase git cannot finish leaves the checkout as it found it**, because a clone stopped mid-rebase
+refuses the next `git` command the run makes and the clone is the whole of a run's state. The
+refusal names the files through `git diff --name-only --diff-filter=U` rather than out of git's
+prose: a conflicting rebase says `could not apply` and prints `git add/rm <conflicted_files>`
+without naming one, so which path appears at all depends on the backend git picked.
 
 ---
 
@@ -196,6 +309,61 @@ passed without the change, a suite that went red — and it reads the card, asks
 one of two stages to start again at. Both real runs above were answered by a policy that never
 refused, so none of the three fired; the mechanism was carried across unexercised, and a
 mechanism nobody has watched is a claim.
+
+**It has now fired, and it fired twice on one run, and each time it was right.** A run asked to
+remove a hardcoded session-secret fallback. The implementer wrote
+`tests/unit/session-secret.test.js`; `vitest.config.ts` collects `*.{test,spec}.ts`, so the file
+was never opened by the runner. The supervisor read the card, named it, and sent the run back to
+the planner — *"The repository's test runner still does not collect
+tests/unit/session-secret.test.js, so the one test the approved plan added remains a file"*. The
+planner planned the same `.js` file again, and the supervisor caught it again and said so again.
+**This is the mechanism working**: the one file the plan named was a file nobody ran, the run said
+so in its own words, and nobody had to notice.
+
+**And it died there, on a step the mechanism had never needed before.** The run stopped with
+
+```text
+StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to
+```
+
+The refusal was routed correctly and **the work item was never let go of**. A work item in
+`IN_PROGRESS_BY_AGENT` holds exactly one agent, and `_takes_the_work_item_from_the_holding_agent`
+exists so an agent cannot hand work straight to a peer — which is right, and which made the
+supervisor's verdict unrepresentable: the supervisor named the planner, and the work item was
+still the implementer's. Every routing test passed, because each one calls a node and reads the
+`Command` it returns; the graph had never been walked with a work item in a hand.
+
+**The release is the step that was missing, and it is a node rather than a key.** The three nodes
+that hand a refusal on now hand it to `let_go_of_the_work_item`, which asks for
+`AWAITING_AGENT_PICKUP` held by nobody; `transition_the_work_item` makes the move, and only it
+may. Two things about that were wrong first and are the argument for the shape:
+
+- **A request in the state is not a move.** The first version put `requested_stage` into the
+  refusing node's own `update`, and the request sat there until the next pickup node overwrote it
+  with its own. The run died at the same `StateMachineError`, one node later, and the fix had
+  changed nothing observable.
+- **A `Command` names its own destination**, so the release cannot return one. Asking the graph to
+  make a move means letting the graph walk it.
+
+**And the biconditional had to learn a stage it did not have.** `AWAITING_AGENT_PICKUP` required
+an agent, because every move into it named one. A release names nobody, so the run then died of
+`AWAITING_AGENT_PICKUP requires no agent, but aisdlc-dev-impl holds the work item` — the mirror
+image of the first failure, one fix later. **The stage is now in a third list,
+`STAGES_WHERE_EITHER_IS_ALLOWED`, and it is the only one there.** Nine pickup nodes reach it with
+an agent named and one release reaches it without; both are the queue. Forcing it onto either side
+of the biconditional makes one of the two moves illegal, which is what happened twice.
+`IN_PROGRESS_BY_AGENT` deliberately stays where it was — a work item in progress with nobody on it
+is a run that believes it is working, which is the failure the single-holder rule exists to make
+visible.
+
+**One row was added to the table, and it says exactly one thing.**
+`AWAITING_AGENT_PICKUP -> AWAITING_AGENT_PICKUP` exists so a queued work item can be **claimed**,
+which changes the holder and not the stage. Without it the run died again at
+`AWAITING_AGENT_PICKUP cannot move to AWAITING_AGENT_PICKUP` when the supervisor's chosen agent
+arrived to pick up work that was already in the queue. `_takes_the_work_item_from_the_holding_
+agent` allows it as written — it refuses a move from one agent into *another agent's* hands, and
+work nobody holds is held by nobody. **No other stage can move to itself**, and a test says so: a
+table where stages generally could would make a rewiring error invisible rather than loud.
 
 Asked with the **real card from run 2** — five notes real agents left about a real repository —
 and a real refusal, a real model decided in 6 seconds:
@@ -554,6 +722,41 @@ Stated rather than left to be discovered.
   thing to ask a model for on purpose. `tests/test_the_supervisor_deciding_what_to_repeat.py` and
   a whole run through the real graph both drive the routing; what neither can do is make a real
   model misbehave on demand.
+- **A run has not reached `DONE` on a real repository.** Every claim above about the merge, the
+  conflict and the rebase is proven against a transport that answers, not against GitHub — and
+  the two runs that got furthest were stopped by the *gate*, not by the merge. What has been
+  proven on a real model against a real clone is: eight gates answered by a policy, a real
+  `git clone`, a real container running the repository's own suite on both sides of a change, and
+  **the repair supervisor firing for the first time and catching a test file the runner never
+  opens**. What is not proven is the tail — a pull request opened against a real remote, checks
+  read on its head commit, and that exact commit merged. The tenth section above says why the
+  seventh is the deepest a run has got, and the merge is one node beyond it.
+- **The upstream repository cannot be a delivery target, for two reasons that are facts about the
+  world rather than about this system.** `paligakrzychu/wellbeing-tracker-public` has **no check
+  runs at all** — no workflows, `total_count: 0` on `main` and on every pull request's head — so
+  `the_suite_went_green` refuses it as `TheSuiteHasNotRunYetError`, correctly: nothing was proved
+  about the commit about to be merged. And the deployment's credential holds `pull` on it and
+  `admin` only on its own fork, so `merge_a_pull_request` would be refused there too. **The fork
+  is the only repository this deployment can deliver to end-to-end**, and a CI workflow was added
+  to it (`npm ci` then `npm test`) for exactly that reason. A deployment wanting the upstream as
+  its target needs both write access and CI there, and neither is a change to this repository.
+- **The product analyst was shown a repository's shape and not its code, for two real runs.** The
+  security analyst had this fixed first, and `an_inspection_of_the_code` was written to fix it —
+  then given to security and to briefing and to nothing else, while the stage whose question is
+  *what is being asked of this repository* kept the shape-only inspection. A person asked for the
+  session cookie's contract to be tested and named the file implementing it; the analyst wrote
+  four requirements about that contract and then listed as an ambiguity *what `buildSetCookie`
+  actually returns*, because it had been handed a listing and a `package.json`. **The gate refused
+  the run on precisely that ambiguity and was right to** — the file was in the clone and the
+  inspection had not been asked for it. An ambiguity the repository can answer is this system
+  declining to look, and a run that produces one has not found a question.
+- **`space-bunny-free` does not read the inspection, and the run says so by stopping.** It is the
+  deployment's model, and on this repository it answered the same requirements question five times
+  with five ambiguities, every one of them answerable from a file the inspection contained. The
+  same question to `deepseek-v4-pro` — same prompt, same inspection, same run — produced **zero**.
+  Nothing in the code changed between those two answers, so this is a fact about the model and not
+  about the pipeline, and it is recorded here because a deployment reads this file before choosing
+  a model and would otherwise learn it from a gate refusal twenty minutes into a run.
 - **A durable checkpointer.** Runs are held in memory, so **a restart loses every parked run**.
   The register, the clone and every artifact survive; the graph's place in the pipeline does
   not. What *is* built is the honesty about it: the API says whether this process is holding a
@@ -566,7 +769,13 @@ Stated rather than left to be discovered.
   issue API, and the four refusals around it were checked against a live server against a real
   briefing — but opening five issues on a third party's public repository is an outward-facing
   write with no undo, so it is the one thing left deliberately untriggered. Start a server with
-  `AISDLC_CREATIVE_MODE=on`, press the button, and tick the boxes.
+  `AISDLC_CREATIVE_MODE=on`, press the button, and tick the boxes; or run
+  `aisdlc brief <owner>/<name>`, which does the same filing with nobody choosing.
+- **A merge has not been made against a real repository either**, and that is the same refusal for
+  the same reason. `github.merge_a_pull_request` and `github.the_suite_went_green` are proven
+  against a transport that answers, not against GitHub — so the one thing they cannot tell us is
+  whether GitHub words a refusal the way this file believes it does, which is why the refusals quote
+  GitHub's own sentence instead of classifying it.
 - **Authentication.** There is none. Anybody who can reach `127.0.0.1:842` can start a run on a
   real repository and answer every gate on it. The loopback address is the whole of the
   boundary, and a deployment that needs it exposed has to put its own authentication in front.
@@ -576,16 +785,24 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships ten test files, and each one is a claim
-  rather than a category:
+  end-to-end tests were not copied. This repository ships twenty test files, and each one is a
+  claim rather than a category:
 
   | file | what it holds this repository to |
   |---|---|
-  | file | what it holds this repository to |
-  |---|---|
   | `test_a_run_from_a_request_to_a_delivery.py` | a run from a sentence to a delivery, and both repairs walked end to end |
+  | `test_every_stage_node_standing_on_its_own.py` | that each stage's node, the one writer of a work item, and the router work on their own, with every agent replaced by a closure |
+  | `test_every_marker_this_repository_declares_is_carried_by_a_test.py` | that no marker is declared without a test behind it, and that nothing is deselected by default |
+  | `test_green_means_green_on_the_commit_being_merged.py` | that "green" is the commit GitHub says the pull request points at, and that an absent verdict is never green |
+  | `test_a_merge_asks_whether_the_pull_request_is_mergeable.py` | that a merge is asked about before it is attempted, and that a refusal is never read as a conflict |
+  | `test_a_conflict_is_decided_by_naming_one_of_two_repairs.py` | that a collision is decided by naming one of two repairs, and that prose or another conflict's repair is refused |
+  | `test_a_conflicting_delivery_is_settled_by_naming_one_of_two_repairs.py` | that a merge GitHub refused as a conflict hands the run to the repair in GitHub's own words; that a rebase sends it back to the suite rather than to the merge; that leaving a pull request open ends the run without claiming a merge, and that the repair moves no work item |
+  | `test_a_rebase_puts_a_runs_commit_on_the_branch_it_joins.py` | that the rebase moves this run's commit onto the branch it would join, on a lease; that a branch somebody else has moved is left alone; that a rebase which changes nothing and one git cannot finish are both refused — the first because it is the bound on the second — and that no `git` argument carries a credential |
+  | `test_a_run_merges_only_the_commit_its_suite_went_green_on.py` | that the merge is given the commit the checks were read about, and that neither new node moves the work item |
+  | `test_a_briefing_can_file_its_own_opportunities.py` | that a briefing files its own opportunities with no person between, against a double for GitHub, and that the open issues are read again to do it |
   | `test_what_two_real_runs_found.py` | the defects two real runs found, and the inspections that carry the code now |
-  | `test_the_supervisor_deciding_what_to_repeat.py` | every refusal routes to the supervisor, and no node chooses a destination *and* carries an edge |
+  | `test_a_work_item_waiting_to_be_picked_up.py` | that a work item nobody holds waits in the queue, that a queued work item can be claimed, and that no other stage may move to itself |
+  | `test_the_supervisor_deciding_what_to_repeat.py` | every refusal routes to the supervisor and releases the work item first, and no node chooses a destination *and* carries an edge |
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
@@ -595,8 +812,27 @@ Stated rather than left to be discovered.
   | `test_work_already_tracked_is_not_proposed_again.py` | that a briefing reads the repository's open issues, and that filing refuses a duplicate before anything is opened |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
-  `ai-sdlc-os`. **Four of these eight did not exist a week ago**, and three of them exist because a
-  check this repository had written could not have failed.
+  `ai-sdlc-os`. **Every one of the twenty is newer than the assembly this repository was cut
+  from**, and four of them exist because a check this repository had written could not have
+  failed. Ten arrived with the merge that follows a delivery, and five of those ten are about a
+  commit: which one the checks were read on, whether it may be merged at all, which of two
+  repairs a conflict gets, what a rebase does to a branch somebody else is using, and whether
+  the run merged only what its suite went green on. The eleventh is
+  `test_a_work_item_waiting_to_be_picked_up.py`, and it exists because a real run reached the
+  repair supervisor for the first time and died there — see the section on the release.
+
+  **The whole-run test replaced all seven agent seams with hardcoded closures**, so it could
+  prove the wiring and could not prove a stage. A graph wired in the wrong order, a stage handed
+  the wrong document, and a note that never reached the card all read the same way through it:
+  the run still reached `DONE`. Six of the eight stages, the clone, the single writer of a work
+  item and the router were reachable only that way, and
+  `test_every_stage_node_standing_on_its_own.py` is what they are now covered by — each node
+  called directly, on a state built by the production `a_run_beginning_at`, with one plain
+  closure handed in and no model, no network, no credential and no container. **Those are
+  characterisation tests rather than RED-then-GREEN cycles**: every one of the nine nodes was
+  already correct, no assertion in that file was satisfied by a line of `src/`, and what it is
+  worth is the next change.
+
 
   **And the table is checked rather than trusted**, by the last row of it. The tag feature landed
   with eleven tests and a commit message describing a README section that was never written — the
@@ -610,3 +846,19 @@ Stated rather than left to be discovered.
   This repository was assembled for speed and carries one test, `ruff`, and a non-strict `mypy`.
   That is a real trade: the engine's safeguards are not reproduced here, and the engine is where
   they still run.
+- ~~**`pyproject.toml` declared an `e2e` marker and filtered on it, and no test carried it.**~~
+  **Fixed, and it was a claim about the suite that nothing could check.** The marker was declared
+  in `markers`, `addopts` said `-m 'not e2e'`, and **zero tests were marked `e2e`** — so the
+  filter deselected nothing and the marker named a tier that did not exist, while reading to
+  anyone who opened the file as a deliberate separation copied from the engine. What this
+  repository actually does is the opposite: three tests need a real model, a real `GITHUB_TOKEN`
+  and a real repository to file against, and they are **collected by the default run and skipped
+  with the reason printed**, so a reader is told which three and what was missing. A deselection
+  is silent, and a tier that vanishes without saying why is indistinguishable from a tier with
+  nothing in it — so the marker and the filter are gone,
+  `test_every_marker_this_repository_declares_is_carried_by_a_test.py` compares the declared set
+  with the set the tests carry, and the second direction is `--strict-markers`. **Zero
+  `parametrize` in the repository is recorded rather than fixed**: where a table would read — the
+  router's declared pipeline, the check runs' verdicts — this repository uses a comprehension
+  over the same table instead, because a failure that names the artifact is worth more than the
+  shorthand.

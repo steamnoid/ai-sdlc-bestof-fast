@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import operator
 from pathlib import Path
-from typing import Annotated, TypedDict
+from typing import Annotated, Final, TypedDict
 
 from aisdlc.agents.architecture_report import ArchitectureReport
 from aisdlc.agents.discovery_report import DiscoveryReport
@@ -23,12 +23,21 @@ from aisdlc.domain.work_item import WorkItem
 from aisdlc.graph.what_to_repeat import WhatToRepeat
 from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.github_create_pull_request import AnOpenedPullRequest
+from aisdlc.tools.the_suite_went_green import WhatTheSuiteSaid
 
 # **Named because a node that carries a refusal across the graph has to name the key twice**,
 # and a string typed at a call site is a string nothing checks. This is the channel a refusal
 # bound for the supervisor travels in, and it holds the refusal's own words rather than a
 # summary of them.
-WHAT_STOPPED_THIS_RUN = "what_stopped_this_run"
+#
+# **`Final` is load-bearing rather than decorative, and this is where it was found.** `AgentState`
+# is a `TypedDict`, and a `get()` whose key is a plain `str` is a key the type checker cannot
+# match against any declared channel — so it answers `object`, and every reader of this channel
+# inherits an `object` it has to narrow before it may call anything on it. Spelling the key
+# `Final` is what tells the checker this is *that* channel, and the two readers that already
+# existed were relying on the narrowing they wrote themselves rather than on the channel's own
+# declared type.
+WHAT_STOPPED_THIS_RUN: Final = "what_stopped_this_run"
 
 
 class AgentState(TypedDict):
@@ -69,6 +78,7 @@ class AgentState(TypedDict):
     verification_report: VerificationReport | None
     pull_request_request: PullRequestRequest | None
     opened_pull_request: AnOpenedPullRequest | None
+    what_the_suite_said: WhatTheSuiteSaid | None
     presented_artifact_id: str
     presented_artifact_version: int
     repair: WhatToRepeat | None

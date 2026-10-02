@@ -6,12 +6,13 @@ one had a board over a store that nothing ever wrote, and the other had a pipeli
 `pytest -m e2e` could start. So the question this file answers is the only one worth asking at
 first — *does starting a run work, and does what comes out look right?*
 
-**A real clone, a real state machine, real gates, a real register, a real HTTP request.** Four
+**A real clone, a real state machine, real gates, a real register, a real HTTP request.** Three
 things are replaced and each is named below. Everything else is production code on its real path,
 because the parts being replaced are the parts that need a network and a model, and the parts
 that are *not* replaced are exactly the ones this product is a claim about: that a work item
 cannot be moved illegally, that a gate suspends, that a decision reaches the board only through
-the gate, and that a run which delivered says so in a column.
+the gate, that the suite is read and the commit merged before a run calls itself delivered, and
+that a run which delivered says so in a column.
 
 **A local bare repository rather than a fixture for the clone.** `git clone /some/path` needs no
 network and is the same code that clones from GitHub, so the clone, the branch and the checkout
@@ -70,7 +71,9 @@ from aisdlc.tools.github_client import Addresses
 from aisdlc.tools.github_clone_repository import RepositoryToClone
 from aisdlc.tools.github_create_branch import PushedBranch
 from aisdlc.tools.github_create_pull_request import AnOpenedPullRequest
+from aisdlc.tools.merge_a_pull_request import WhatTheMergeLanded
 from aisdlc.tools.run_tests import SuiteOutcome
+from aisdlc.tools.the_suite_went_green import WhatTheSuiteSaid
 from aisdlc.web.the_api import the_api_over
 
 A_REPOSITORY = Repository(owner="pikuniu", name="a-project")
@@ -276,14 +279,27 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
     )
 
 
-def _a_delivery_that_only_writes_down(clone_path: Path) -> TheDeliveryOfThisRun:
+THE_COMMIT_THIS_FAKE_DELIVERY_MERGED = "0" * 40
+
+
+def _a_delivery_that_only_writes_down(
+    clone_path: Path, what_the_delivery_was_asked: list[str] | None = None
+) -> TheDeliveryOfThisRun:
     """The second replacement: a delivery that reports what it would have done.
 
-    **A `PushedBranch` and an `AnOpenedPullRequest` with real numbers.** The graph's delivery node
-    decides *whether* to deliver and asks these two collaborators to do it; what they do is a
-    network call. So they are the seam, and the decision — the last gate, the refusal check, the
-    move to `DONE` — is production code being tested.
+    **A `PushedBranch`, an `AnOpenedPullRequest`, a green suite and a merged commit, with real
+    numbers.** The graph's delivery node decides *whether* to deliver and asks these collaborators
+    to do it; what they do is a network call. So they are the seam, and the decision — the last
+    gate, the refusal check, the suite, the merge, the move to `DONE` — is production code being
+    tested.
+
+    **The last three are recorded when a list is handed in**, and that is what proves the tail of
+    the pipeline is walked in the order the graph declares. A whole run that reached `DONE` would
+    reach it whether or not anything had been merged, so the order is a separate fact and it is
+    read out of the calls rather than out of the run's outcome.
     """
+    what_was_asked = what_the_delivery_was_asked if what_the_delivery_was_asked is not None else []
+
     return TheDeliveryOfThisRun(
         our_copy=A_REPOSITORY,
         push_the_branch=lambda the_clone, name: PushedBranch(
@@ -292,7 +308,58 @@ def _a_delivery_that_only_writes_down(clone_path: Path) -> TheDeliveryOfThisRun:
         open_the_pull_request=lambda what_to_open: AnOpenedPullRequest(
             number=1, address="https://example.invalid/paligakrzychu/a-project/pull/1"
         ),
+        ask_whether_the_suite_went_green=_a_green_suite_asking(what_was_asked),
+        merge_the_pull_request=_a_merge_of_the_commit_asked_about(what_was_asked),
+        rebase_the_branch=_a_rebase_that_must_not_be_asked_for(),
     )
+
+
+def _a_rebase_that_must_not_be_asked_for():
+    """A rebase, and a failure saying the run asked for one it had no reason to ask for.
+
+    **The last of the delivery collaborators this file replaces, and it is a failure rather than a
+    double that answers.** A conflict is the one thing the merge above cannot produce — it always
+    succeeds — so a rebase here would mean the run reached the repair without GitHub having said
+    anything, and the wiring is what would be wrong. Saying so is the whole of what this double is
+    for, and it replaces a run whose stages are all green.
+    """
+
+    def rebasing(wanted):
+        pytest.fail(
+            f"the run rebased {wanted.the_branch_this_run_pushed!r} onto "
+            f"{wanted.the_branch_it_would_join!r}, but the merge in this file always succeeds, so "
+            "nothing ever said this delivery conflicts — the repair node is reachable without a "
+            "conflict"
+        )
+
+    return rebasing
+
+
+def _a_green_suite_asking(what_was_asked: list[str]):
+    """A suite green on one commit, and a record of which pull request it was asked about."""
+
+    def reading(the_pull_request: AnOpenedPullRequest, repository: Repository) -> WhatTheSuiteSaid:
+        what_was_asked.append(f"the suite was read on {the_pull_request.address}")
+        return WhatTheSuiteSaid(
+            head_commit=THE_COMMIT_THIS_FAKE_DELIVERY_MERGED,
+            which_checks_went_green=["the_gate"],
+        )
+
+    return reading
+
+
+def _a_merge_of_the_commit_asked_about(what_was_asked: list[str]):
+    """A merge that lands the commit it was given, and a record of which commit that was."""
+
+    def merging(
+        the_pull_request: AnOpenedPullRequest, repository: Repository, the_commit: str
+    ) -> WhatTheMergeLanded:
+        what_was_asked.append(f"{the_commit} was merged")
+        return WhatTheMergeLanded(
+            commit=the_commit, what_github_said="Pull Request successfully merged"
+        )
+
+    return merging
 
 
 def _cloning_from_a_local_repository(the_bare: Path):
@@ -354,7 +421,10 @@ def test_a_run_started_from_the_board_reaches_delivered(
     _, the_projects_root = a_register_and_a_projects_root
     os.environ["AISDLC_PROJECTS_DIR"] = str(the_projects_root)
 
-    the_runs = _the_runs_holding_a_run_built_out_of_fakes(a_repository_to_clone_into)
+    what_the_delivery_was_asked: list[str] = []
+    the_runs = _the_runs_holding_a_run_built_out_of_fakes(
+        a_repository_to_clone_into, what_the_delivery_was_asked
+    )
     with TestClient(the_api_over(_the_open_register(), the_runs)) as the_board:
         started = the_board.post(
             "/api/runs",
@@ -414,6 +484,18 @@ def test_a_run_started_from_the_board_reaches_delivered(
     assert the_card["how_many_gates_it_has_been_through"] == 8, (
         "eight gates, and a run that recorded a different number answered a different number of "
         "them — the card is counting decisions, so this is a fact and not a display"
+    )
+
+    # **The tail, in the order the graph declares it: opened, then the suite, then the merge.**
+    # A run that reached `DONE` would reach it whether or not anything had been merged, so the
+    # order is a separate fact — and a delivery that marked itself delivered without merging is
+    # exactly the "reads from the outside like success" failure this file was written to catch.
+    assert what_the_delivery_was_asked == [
+        "the suite was read on https://example.invalid/paligakrzychu/a-project/pull/1",
+        f"{THE_COMMIT_THIS_FAKE_DELIVERY_MERGED} was merged",
+    ], (
+        "a run reached DONE without reading the suite and merging that commit in between, in that "
+        f"order: {what_the_delivery_was_asked}"
     )
 
     # **The work item really is at `DONE`, read back out of the register.** The card is a
@@ -581,7 +663,7 @@ def test_an_agent_may_not_answer_its_own_gate(
 
 
 def _the_runs_holding_a_run_built_out_of_fakes(
-    the_bare: Path,
+    the_bare: Path, what_the_delivery_was_asked: list[str] | None = None
 ) -> TheRunsThisProcessIsHolding:
     """A holder whose runs are the real graph, the real clone and seven agents that did not ask.
 
@@ -599,7 +681,7 @@ def _the_runs_holding_a_run_built_out_of_fakes(
     def building_the_graph(source: Repository, the_model: object = None) -> object:
         return the_lifecycle(
             agents=_the_agents_no_model_would_produce(),
-            delivery=_a_delivery_that_only_writes_down(the_bare),
+            delivery=_a_delivery_that_only_writes_down(the_bare, what_the_delivery_was_asked),
             plan_the_clone=_cloning_from_a_local_repository(the_bare),
         )
 
@@ -647,10 +729,31 @@ def _a_question_nobody_has_answered(
 
 
 def _wait_until_the_run_has_finished(the_board: TestClient, work_item_id: str) -> None:
-    """Wait for the run to stop asking, which is how both delivering and refusing end."""
+    """Wait for the run to be neither asking nor walking, which is how delivering and refusing end.
+
+    **Two facts and not one, because "not asking" is true for a moment that is not the end.** A
+    run that answers its last gate stops asking *immediately*, and everything after that gate —
+    the delivery, the suite, the merge, the move to `DONE` — happens while it is still walking. So
+    a wait for "not asking" returns in the gap, and the assertion that follows then reads a card
+    from a run that has not finished. **This is not a hypothetical**: the delivery tail grew by two
+    nodes, and a wait that had been passing by a hair started failing about one run in three with
+    `the card is in 'to review' rather than delivered` — which is the assertion, not the wiring.
+
+    **The card's column is deliberately not the thing waited for.** It is what the test below
+    asserts, and a wait for it would make the assertion true by construction.
+    """
     _wait_until(
-        lambda: the_board.get(f"/api/runs/{work_item_id}").json()["the_question"] is None,
-        f"{work_item_id} was still asking questions when the test gave up",
+        lambda: not _the_run_is_mid_anything(the_board, work_item_id),
+        f"{work_item_id} was still asking, or still working, when the test gave up",
+    )
+
+
+def _the_run_is_mid_anything(the_board: TestClient, work_item_id: str) -> bool:
+    """Whether this run is parked at a gate or walking a stage: the two ways of not being done."""
+    what_the_board_says = the_board.get(f"/api/runs/{work_item_id}").json()
+    return (
+        what_the_board_says["the_question"] is not None
+        or what_the_board_says["is_still_working"]
     )
 
 

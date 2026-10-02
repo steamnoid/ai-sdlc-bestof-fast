@@ -24,7 +24,7 @@ opportunities so the board is not empty.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -276,6 +276,73 @@ def _the_briefing_was_said(
             "aisdlc-brief",
             the_report.agent_judgement.the_text_of_the_note_this_is(),
         )
+
+
+def filing_a_briefing_without_asking_anybody(
+    repository: Repository,
+    a_briefing: Brief | None = None,
+    plan_the_clone: PlanTheBriefingsClone | None = None,
+    read_which_issues_are_open: ReadWhichIssuesAreOpen | None = None,
+    open_the_issue: OpenTheIssue | None = None,
+) -> ARepositoryBriefedItself:
+    """Brief this repository, then file everything it found, with no person in between.
+
+    **Every opportunity and not the best one, because there is nobody to choose.** The board's
+    second call exists so a person can pick which of five opportunities their project should be
+    given; a machine that picked the best would be making that judgement silently, and one that
+    filed two of three would be leaving a partial backlog nobody asked for.
+
+    **The list of open issues is read twice, and the second read is the one that matters.** The
+    first is what the briefing model was shown; the second is what the duplicate refusal compares
+    against, at the moment of writing. A person choosing takes minutes and a machine takes
+    milliseconds, so this narrows the window this repository's own docstring names — between the
+    read and the write — to the width of one request. **It cannot be closed.** GitHub offers no way
+    to open an issue *unless* nothing matching it exists, so the check and the write are two
+    requests and a race is a race; what is removed is the long window, not the short one.
+
+    **A duplicate stops the whole filing rather than one opportunity**, because that is what
+    `filing_what_the_briefing_found` does for a person who chose three and got one. It is the cost
+    of automating a path whose refusal was written for somebody who could look again, and it is
+    recorded here rather than changed behind a test.
+    """
+    what_is_tracked = read_which_issues_are_open or the_issues_this_deployment_can_read()
+    the_briefing = a_repository_briefed_itself(
+        repository, a_briefing, plan_the_clone, what_is_tracked
+    )
+
+    return filing_every_opportunity_a_briefing_found(
+        the_briefing,
+        what_is_tracked(the_briefing.about),
+        open_the_issue or the_issue_opener_this_deployment_has(),
+    )
+
+
+def filing_every_opportunity_a_briefing_found(
+    briefing: WhatABriefingFound,
+    what_is_tracked_now: Sequence[AnOpenIssue],
+    open_the_issue: OpenTheIssue,
+) -> ARepositoryBriefedItself:
+    """File every opportunity this briefing found, against the list read at this moment.
+
+    **The list is an argument and is not read here**, so a caller that read it earlier cannot pass
+    a stale one by accident, and a test can say what was open at the moment of writing rather than
+    what was open when the model was asked. This is the same function the board's picks path reaches
+    through, with every position rather than the ones a person chose.
+    """
+    the_work_item_ids = filing_what_the_briefing_found(
+        _the_report_behind(briefing),
+        briefing.opportunities,
+        open_the_issue,
+        what_is_tracked_now,
+    )
+
+    return ARepositoryBriefedItself(
+        briefing_id=briefing.briefing_id,
+        repository=briefing.about,
+        what_this_repository_is=briefing.what_this_repository_is,
+        how_many_opportunities_were_found=len(briefing.opportunities),
+        how_many_became_filings=len(the_work_item_ids),
+    )
 
 
 def filing_the_picks_a_person_made(

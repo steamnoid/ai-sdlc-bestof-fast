@@ -121,6 +121,7 @@ def _the_state_of(
         "requested_role": work_item.role,
         "written_files": None,
         "opened_pull_request": None,
+        "what_the_suite_said": None,
         "repair": None,
         "what_stopped_this_run": None,
         "decisions": [],
