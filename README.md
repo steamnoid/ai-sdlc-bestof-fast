@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 232 passed, 3 skipped, 8 deselected, ~9s, no network, no model, no credential, no container
+uv run pytest -q     # 235 passed, 3 skipped, 8 deselected, ~15s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -1166,6 +1166,7 @@ Stated rather than left to be discovered.
   | `test_a_run_from_a_request_to_a_delivery.py` | a run from a sentence to a delivery, and both repairs walked end to end |
   | `test_every_stage_node_standing_on_its_own.py` | that each stage's node, the one writer of a work item, and the router work on their own, with every agent replaced by a closure |
   | `test_every_marker_this_repository_declares_is_carried_by_a_test.py` | that no marker is declared without a test behind it, and that nothing is deselected by default |
+  | `test_a_check_still_running_is_waited_for.py` | that a check GitHub has not finished deciding is waited for with a ceiling, that a red suite is still refused afterwards, and that a suite which never finishes stops on the ceiling naming `queued` |
   | `test_green_means_green_on_the_commit_being_merged.py` | that "green" is the commit GitHub says the pull request points at, and that an absent verdict is never green |
   | `test_a_merge_asks_whether_the_pull_request_is_mergeable.py` | that a merge is asked about before it is attempted, and that a refusal is never read as a conflict |
   | `test_a_conflict_is_decided_by_naming_one_of_two_repairs.py` | that a collision is decided by naming one of two repairs, and that prose or another conflict's repair is refused |
