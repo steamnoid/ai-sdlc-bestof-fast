@@ -1082,12 +1082,34 @@ Stated rather than left to be discovered.
   **The run refused to merge it, and it was right twice over.** Its checks were `queued` when it
   looked — the tool treated "nothing has happened yet" as a refusal, which is a real finding and is
   [#21](https://github.com/steamnoid/ai-sdlc-bestof-fast/pull/21) — and when they finished they were
-  **red**, because `wellbeingt-17-docker.integration.test.ts` calls `expect.skip`, which Vitest does
-  not have. That line is only reached when a Docker build did **not** happen; on `main` it did, the
-  call was never made, and the file passed. **The file has been passing by not being executed**, and
-  this repository's `main` has reported it green since September. A pre-existing defect in the
-  repository, exposed rather than caused — and exactly the thing a green-check rule exists to catch,
-  which is why the two facts are in this entry together and not as two separate findings.
+  **red**.
+
+  **And the run caused the red, which I got wrong the first time and checked.** I wrote that the
+  failure was a pre-existing defect merely exposed, on the strength of a green `main` and a red pull
+  request. **That reasoning was too quick**, and building the branch locally settled it:
+
+  ```
+  ✓ Compiled successfully in 2.7s
+  Collecting page data ...
+  TypeError: The "path" argument must be of type string or an instance of URL.
+      at web-app/.next/server/chunks/280.js
+  ```
+
+  `docker build` runs `npm run build`, so this change **breaks the image build**. Removing the one
+  file the run added — `web-app/src/lib/session-secret.js` — and building again succeeds. **The green
+  `main` is not evidence that the repository was healthy**; it is evidence that the build had never
+  failed, so the line below it had never run.
+
+  **What is genuinely pre-existing is `expect.skip`**, which Vitest has never had and which has been
+  in that file since 3 September. **But it was never reached**, because the build had never failed.
+  **This run caused the failure that revealed it** — and it is worth separating the two, because
+  "exposed" and "caused" point at different things to fix.
+
+  **The change itself should never have shipped, and the reason is not the build.** It writes a
+  generated secret to disk at runtime, resolved through `import.meta.url` — and **a secret
+  materialised into a container's filesystem is a secret in the image.** A change asked to remove a
+  hardcoded secret answered by generating and persisting one, and nothing in the pipeline noticed
+  that the answer was worse than the thing it replaced. That is the finding worth the run's cost.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
