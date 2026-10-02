@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 224 passed, 3 skipped, 8 deselected, ~14s, no network, no model, no credential, no container
+uv run pytest -q     # 227 passed, 3 skipped, 8 deselected, ~12s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -345,6 +345,41 @@ tests/unit/session-secret.test.js, so the one test the approved plan added remai
 planner planned the same `.js` file again, and the supervisor caught it again and said so again.
 **This is the mechanism working**: the one file the plan named was a file nobody ran, the run said
 so in its own words, and nobody had to notice.
+
+**And that run then got further than any before it — six gates, the release, a second plan, a
+second approval — and died at the delivery node with nothing to deliver.**
+
+```text
+TheDeliveryHasNothingToDeliverError: PullRequestRequest is opened by the stage
+that wrote it, and this run has none. The delivery node is wired after the node
+that builds the request.
+```
+
+**The cause was a shortcut in the router that no test covered and no README claimed.** An approved
+plan whose supervisor's verdict said *the implementer was not at fault* was routed straight to the
+node that **pushes and opens** a pull request, skipping the pickup, `describe_the_delivery_for_this_run`
+and the node that writes `PullRequestRequest`. **The crash is the smaller half.** `WhatToRepeat`
+carries a verdict for **every agent in the run** — the rule exists so an agent nobody spoke about is
+refused by name — so the implementer carries one whether or not it ever ran. *"The implementer must
+not repeat its work"* therefore says **who is at fault**, and it was being read as **there is
+nothing left to do**. The plan had been rewritten behind it, so nothing had implemented it: the
+change that would have been delivered is the **first** plan's change under the **second** plan's
+approval, and the register would have said `DONE`.
+
+**Why it survived a merge, a squash and a green gate: both whole-run repair tests bounced the run
+to the *implementer*.** `WHERE_THE_IMPLEMENTATION_IS_REWRITTEN` appeared twice;
+`WHERE_THE_PLAN_IS_REWRITTEN` appeared in no test anywhere, so the route a real run took had never
+been walked. It is now, and it dies with the very error above — checked by re-adding the branch
+rather than by reading the code.
+
+**The branch is removed rather than narrowed, because it had no true case.** `repair` is written in
+one place, by the supervisor, which is only reached from a refusal; after a refusal either the
+implementer must repeat — the table's own row — or the planner does and the approved plan is a
+different plan. So the branch fired in the one situation where it was wrong and in none where it was
+right. **A shortcut with no test and no claim behind it is not a rule**, and the second thing worth
+naming is that the router's own docstring now says why the route does not exist, because the honest
+reason is invisible from the table: a verdict about *who is at fault* and a statement that *there is
+nothing to do* read the same way in a channel holding one model's answer about seven agents.
 
 **And it died there, on a step the mechanism had never needed before.** The run stopped with
 

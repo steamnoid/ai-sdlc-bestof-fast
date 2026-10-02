@@ -1142,3 +1142,134 @@ def test_a_red_suite_reaches_the_supervisor_and_the_run_delivers_afterwards(
         "the repair worked, every gate was approved, and the register has this run at "
         f"{the_stage_the_register_holds.name} rather than DONE"
     )
+
+
+def test_a_run_put_back_to_the_planner_delivers_rather_than_skipping_the_implementation(
+    a_repository_to_clone_into: Path, a_register_and_a_projects_root, tmp_path: Path
+) -> None:
+    """The third repair, and the one no test walked: the run is sent back to the **planner**.
+
+    **The other two both sent it back to the implementer**, and that is why the route that broke was
+    never exercised. `WHERE_THE_IMPLEMENTATION_IS_REWRITTEN` appears in the two whole-run repair
+    tests in this file and `WHERE_THE_PLAN_IS_REWRITTEN` appeared in none — so a run bounced for a
+    planner's reason had no path through the graph under test at all, and a real run took it.
+
+    **What that route found.** The supervisor answered *the planner must redo its work*, the planner
+    wrote a second plan, a person approved it, and the run then walked straight to the node that
+    pushes and opens a pull request:
+
+        TheDeliveryHasNothingToDeliverError: PullRequestRequest is opened by the stage that
+        wrote it, and this run has none.
+
+    The symptom is a missing artifact. **The cause is that the second plan had never been
+    implemented at all** — `WhatToRepeat` carries a verdict for every agent whether or not it ran,
+    so "the implementer must not repeat its work" said who was at fault and was read as "there is
+    nothing to do". Delivering there would have pushed the *first* plan's change under the *second*
+    plan's approval.
+
+    **So the claim here is about the whole path and not about the planner.** The planner is asked
+    twice, the gate is answered twice, the implementer runs once — and it must run once, because
+    the plan it implements is the one that was approved last. A run whose second plan is delivered
+    without an implementation would report a delivery of something nobody built against what a
+    person read, and the register would say `DONE`.
+    """
+
+    from aisdlc.graph.lifecycle import the_lifecycle
+    from aisdlc.graph.supervise_a_repair import WHERE_THE_PLAN_IS_REWRITTEN
+    from aisdlc.store.the_register_of_work_items import the_work_item_registered_at
+
+    _, the_projects_root = a_register_and_a_projects_root
+    how_many_times_the_plan_was_written = {"count": 0}
+    how_many_times_the_change_was_attempted = {"count": 0}
+    what_the_supervisor_was_told: list[str] = []
+    working_agents = _the_agents_no_model_would_produce()
+    the_planner_the_first_time_naming_a_file_nobody_ran = working_agents.plan
+
+    def a_planner_that_names_a_different_file_the_second_time(
+        requirements, security_report, clone, repository, what_the_suite_announced=""
+    ):
+        how_many_times_the_plan_was_written["count"] += 1
+        if how_many_times_the_plan_was_written["count"] == 1:
+            return the_planner_the_first_time_naming_a_file_nobody_ran(
+                requirements, security_report, clone, repository, what_the_suite_announced
+            )
+        return working_agents.plan(
+            requirements, security_report, clone, repository, what_the_suite_announced
+        )
+
+    def an_implementer_who_writes_the_same_file_back_once(clone, repository, implementation_plan):
+        """Refuse once by writing the plan's file back unchanged, then implement it.
+
+        **The refusal is the real one, raised by the real exception.** A write that changes nothing
+        is what a real run produced — the implementer wrote a test file and the suite collected no
+        new test, so nothing it wrote was observable — and it is the refusal `apply_node` hands on
+        rather than the one it stops on. **Without a refusal in this test there is no supervisor, no
+        bounce and no route**, which is worth saying because it is why the first version of this
+        test asserted a plan count of two against a run that had never bounced.
+        """
+        how_many_times_the_change_was_attempted["count"] += 1
+        if how_many_times_the_change_was_attempted["count"] == 1:
+            raise AWriteThatChangesNothingError(["health.py"])
+        return working_agents.apply_and_verify(clone, repository, implementation_plan)
+
+    def a_supervisor_that_says_rewrite_the_plan(work_item, projects_root, what_the_run_stopped_on):
+        what_the_supervisor_was_told.append(str(what_the_run_stopped_on))
+        return Command(
+            goto=WHERE_THE_PLAN_IS_REWRITTEN,
+            update={"repair": "the plan named a test file the runner never opens"},
+        )
+
+    the_graph = the_lifecycle(
+        agents=TheAgentsThisRun(
+            **{
+                **working_agents.__dict__,
+                "plan": a_planner_that_names_a_different_file_the_second_time,
+                "apply_and_verify": an_implementer_who_writes_the_same_file_back_once,
+                "supervise": a_supervisor_that_says_rewrite_the_plan,
+            }
+        ),
+        delivery=_a_delivery_that_only_writes_down(a_repository_to_clone_into),
+        plan_the_clone=_cloning_from_a_local_repository(a_repository_to_clone_into),
+    )
+
+    the_work_item = a_work_item_commissioned_for_an_agent(
+        work_item_id="a-plan-that-was-repaired",
+        repository=Repository(owner="an", name="owner"),
+        accountable_role=Role.DEV,
+        commissioned_by="a person reading a test",
+        requested=a_request_about("add a health endpoint", ""),
+    )
+    with holding_the_register() as register:
+        the_work_item_a_commission_registers(register, the_work_item)
+
+    the_gates_it_asked_about: list[str] = []
+    _walk_the_run_to_the_end(
+        the_graph, the_work_item, the_projects_root, the_gates_it_asked_about
+    )
+
+    with holding_the_register() as register:
+        the_stage_the_register_holds = the_work_item_registered_at(
+            register, the_work_item.work_item_id
+        ).stage
+
+    assert how_many_times_the_plan_was_written["count"] == 2, (
+        f"the planner wrote {how_many_times_the_plan_was_written['count']} plans, so a supervisor "
+        "that answered *rewrite the plan* did not send the run back to it — and a verdict naming a "
+        "stage that nothing routes to is a verdict nobody reads"
+    )
+    assert how_many_times_the_change_was_attempted["count"] == 2, (
+        f"the implementer ran {how_many_times_the_change_was_attempted['count']} times, and a plan "
+        "rewritten behind it must be implemented afresh. **A supervisor's verdict carries one for "
+        "every agent whether or "
+        "not that agent ran**, so 'the implementer must not repeat its work' says the implementer "
+        "was not at fault — and reading it as 'there is nothing to implement' delivers the first "
+        "plan's change under the second plan's approval. This is the branch a real run took, "
+        "and it died with `TheDeliveryHasNothingToDeliverError`"
+    )
+    assert len(what_the_supervisor_was_told) == 1, (
+        f"the supervisor was asked {len(what_the_supervisor_was_told)} times for one refusal"
+    )
+    assert the_stage_the_register_holds.name == "DONE", (
+        "the repair worked, every gate was approved, and the register has this run at "
+        f"{the_stage_the_register_holds.name} rather than DONE"
+    )
