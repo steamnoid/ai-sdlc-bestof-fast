@@ -1122,6 +1122,37 @@ Stated rather than left to be discovered.
   missing is the run's own words**: the implementer said what it did, the verification said the suite
   passed, and the diff says `writeFileSync`. A reader of the pull request would have seen it in one
   glance, and the pipeline's answer to that reader is a gate that reads prose about tests.
+- **A supervisor that knows a repair is pointless should stop, and one asked for a fourth turn
+  instead — and the ceiling caught it.** A real run reached the supervisor three times and each
+  time it wrote why another turn could not help, in its own words and with increasing precision:
+
+  > where this run starts again: the change is planned again · what has not changed: the
+  > repository already contains the exact contents the plan proposes for
+  > `web-app/src/lib/session-secret.ts`, `web-app/src/lib/auth.js`, `web-app/src/middleware.ts`,
+  > and the tests it names
+
+  **And it sent the run to the planner anyway, three times, while writing that nothing had
+  changed.** The run's own first bounce is the same shape: *"the approved plan has not named a
+  product file whose behaviour `tests/unit/session-secret.test.ts` must exercise, so that test
+  still passes on the unchanged code."* The change had been made on the first attempt; the plan
+  proposing to make it again was proposing what the repository already contained.
+
+  **The ceiling stopped it, and said which of the two ways a loop ends this was:**
+
+  > `TheRepeatBudgetRanOutError: aisdlc-dev-plan has already had every turn the ceiling allows, and
+  > the supervisor's judgement was that it should have another. So this run stops on the ceiling
+  > rather than on the judgement: the supervisor read the same card on every attempt, asked for
+  > another, and was overruled. **Its judgement failed, and a record reading as a clean stop would
+  > hide that.**
+
+  **So the mechanism is whole and the reasoning is not.** Release, supervisor, repeat ceiling, and
+  the card that records which of the two endings this was — all four fired on a real run, and the
+  run said out loud that its own supervisor had run out of useful things to say. `WhatToRepeat` has
+  the tool for this: *stand every agent down and name what has not changed*, and its own prompt says
+  a second attempt at a plan that names no product file *is a circle, not a repair*. **A model that
+  writes "nothing has changed" and then asks for another turn is a judgement this pipeline cannot
+  overrule by prompting**, which puts the claim where this repository puts every other claim about
+  reasoning: `evals/`, measured rather than asserted.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
