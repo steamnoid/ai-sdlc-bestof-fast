@@ -575,6 +575,20 @@ def _the_section(inside: Path, name: str, what: str) -> str | None:
     that turns out to be a symlink out of the clone is refused rather than followed.
     A file too large to be worth the context is named and left out, because a truncated
     manifest is a manifest that lies about its own contents.
+
+    **And the line saying so states where its number came from.** It used to read
+    `(omitted: 61199 characters, too large to read)`, which says two things and lets a
+    careful reader resolve them wrongly: a bare character count on the same line as
+    "too large to read" is a measurement to anyone who has not been told otherwise, and
+    nobody had been told otherwise. A real run's discovery report said faithfully that
+    `README.md` was not readable and quoted the size it had been given here, and the
+    policy reading it refused the run for the contradiction — which does not exist. The
+    line now says the size is known without reading the file, which is what is true.
+
+    **This is the writer's mistake rather than the reader's**, and that is why the fix is
+    here instead of in the policy's question: explaining a notation to the model about to
+    rule on a document puts the convention somewhere it can drift from the thing it
+    describes. A line that cannot be misread needs no explanation.
     """
     try:
         read = read_file_in_the_project(
@@ -584,7 +598,11 @@ def _the_section(inside: Path, name: str, what: str) -> str | None:
         return None
 
     if len(read.text) > A_LIMIT_ON_A_SINGLE_FILE:
-        return f"## {name}\n\n(omitted: {len(read.text)} characters, too large to read)"
+        return (
+            f"## {name}\n\n"
+            f"({len(read.text)} characters. Its text is not shown, because a file this large is "
+            f"not worth the context, and the size is known without reading it.)"
+        )
 
     return f"## {name}\n\n{read.text}"
 

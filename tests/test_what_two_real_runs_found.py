@@ -940,3 +940,81 @@ def test_the_gate_runs_every_tier_pytest_declares() -> None:
         f"selects {never_run}. Everything carrying that marker is invisible to the gate, so it can "
         f"be red on main while the gate is green — which is what happened for eight pull requests"
     )
+
+
+def test_a_file_the_inspection_could_not_read_does_not_read_as_if_it_had(tmp_path: Path) -> None:
+    """A size on its own line reads as evidence of having read, and a real policy believed it.
+
+    A run was refused at its first gate for a contradiction that does not exist. The policy wrote:
+
+    > `README.md` is listed as evidence and given an exact 61,199-character size while
+    > `suggested_changes` states that same file "was not readable from the inspection"
+
+    **Both of those are true, and the model that wrote them was faithful in both directions.**
+    Measured against this repository:
+
+    ```text
+    is README.md in the inspection: True   <- the heading is there, saying it was omitted
+    any character count in it     : True   <- "(omitted: 61199 characters, too large to read)"
+    real size of README.md        : 61199
+    ```
+
+    The size came from the inspection and the file genuinely was not read. **The line says two
+    things, and a careful reader resolved them the wrong way** — a bare number of characters on
+    the same line as "too large to read" is evidence of reading to anyone who has not been told
+    otherwise, and nobody had been told otherwise.
+
+    **This is the writer's mistake, not the reader's.** The alternative fix is to explain the
+    notation to the policy, which asks a model to be told what a document means before ruling on
+    the document — and puts the convention somewhere it can drift from the thing it describes. A
+    line that cannot be misread needs no explanation.
+
+    **And the general shape: the gate refusing a faithful report is the most expensive failure in
+    this system**, because it costs a whole run and the report was right. That is why the fix is
+    to the text the inspection emits rather than to the judgement about it.
+    """
+    from aisdlc.tools.github_clone_repository import ClonedRepository
+    from aisdlc.tools.inspect_the_repository import (
+        A_LIMIT_ON_A_SINGLE_FILE,
+        an_inspection_of_the_code,
+    )
+
+    # **`README.md`, and the two names this test tried first were both wrong in instructive
+    # ways.** `a_document.md` matched no word in the name rule and is under no tests directory, so
+    # the file was never read at all. `config.yml` matches the name rule but is not a source
+    # suffix, and neither is a manifest or a CI file — and the omission line is written by
+    # `_the_section`, which serves manifests, READMEs and CI configuration. A source file that is
+    # too large gets no line at all: `_the_text_of` returns `None` and its size is never
+    # mentioned. So the misread notation has exactly one home, and this is the file the refused
+    # run was about.
+    a_file_too_large_to_read = tmp_path / "README.md"
+    a_file_too_large_to_read.write_text(
+        "x" * (A_LIMIT_ON_A_SINGLE_FILE + 1), encoding="utf-8"
+    )
+
+    the_inspection = an_inspection_of_the_code(
+        ClonedRepository(path=tmp_path, ref="main", commit="0" * 40)
+    )
+
+    the_line_about_it = [
+        a_line for a_line in the_inspection.splitlines() if "README.md" in a_line
+    ]
+    the_measured_size = str(A_LIMIT_ON_A_SINGLE_FILE + 1)
+    said_it_could_not_be_read = [
+        a_line for a_line in the_inspection.splitlines() if the_measured_size in a_line
+    ]
+
+    assert said_it_could_not_be_read, (
+        f"the inspection does not mention the size of {a_file_too_large_to_read.name} at all, so "
+        f"this test is not about the line it should be about. What it says instead was "
+        f"{the_line_about_it}"
+    )
+
+    the_line = said_it_could_not_be_read[0]
+
+    assert "without reading it" in the_line, (
+        f"the inspection says {the_line!r} — a bare character count beside the words 'too large to "
+        f"read' reads as a measurement, and a real policy refused a faithful report for treating "
+        f"it as one. The line has to say where the number came from, because it did not come from "
+        f"reading the file"
+    )
