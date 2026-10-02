@@ -29,6 +29,7 @@ from aisdlc.approval.approval_decision import ApprovalDecision
 from aisdlc.creative.a_repository_briefing_itself import (
     filing_a_briefing_without_asking_anybody,
 )
+from aisdlc.domain.a_name_nobody_has_used_for import a_name_nobody_has_used_for
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.work_item import a_work_item_commissioned_for_an_agent
@@ -249,13 +250,8 @@ def _a_repository_from(written: str) -> Repository:
 
 
 def _a_work_item_id_for(repository: Repository, asked_for: str) -> str:
-    """A name nobody has used, because a work item's id is a branch, a directory and a thread."""
-    the_moment = datetime.now(UTC)
-    the_words = "".join(
-        a_character if a_character.isalnum() else "-" for a_character in asked_for.lower()
-    )
-    the_slug = "-".join(a_part for a_part in the_words.split("-") if a_part)[:48].strip("-")
-    return f"{repository.name}-{the_slug}-{the_moment:%Y%m%d-%H%M%S}"
+    """A work item's id, and why it lives in one place rather than here. See the module."""
+    return a_name_nobody_has_used_for(repository, asked_for)
 
 
 def _the_discipline_asked_for():

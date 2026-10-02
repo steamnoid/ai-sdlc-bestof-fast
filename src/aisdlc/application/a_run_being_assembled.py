@@ -37,6 +37,7 @@ from aisdlc.agents.discover_the_repository import (
 from aisdlc.agents.inspect_for_security_risk import the_security_analyst_using_the_configured_model
 from aisdlc.agents.plan_the_change import plan_the_change
 from aisdlc.agents.review_an_artifact import a_policy_answering_this_gate
+from aisdlc.agents.security_report import SecurityReport
 from aisdlc.agents.what_to_do_around_a_conflict import (
     WhatKindOfConflict,
     WhatToDoAroundAConflict,
@@ -153,12 +154,13 @@ def _a_planner_using(the_model: BaseChatModel):
 
     def planning(
         requirements,
+        security_report: SecurityReport,
         clone: ClonedRepository,
         repository: Repository,
         what_the_suite_announced: str = "",
     ):
         del what_the_suite_announced
-        return plan_the_change(requirements, clone, repository, the_model)
+        return plan_the_change(requirements, security_report, clone, repository, the_model)
 
     return planning
 

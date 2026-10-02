@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from aisdlc.agents.discovery_answer import DiscoveryAnswer
 from aisdlc.agents.discovery_report import DiscoveryReport
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.agent_state import AgentState
 from aisdlc.graph.clone_node import TheRepositoryHasNotBeenClonedYetError
@@ -15,7 +16,8 @@ from aisdlc.tools.github_clone_repository import ClonedRepository
 from aisdlc.tools.what_people_said_about_a_work_item import a_comment_was_left
 
 Discover = Callable[
-    [ClonedRepository, Repository], tuple[DiscoveryReport, DiscoveryAnswer]
+    [ClonedRepository, Repository, CommissionedRequest | None],
+    tuple[DiscoveryReport, DiscoveryAnswer],
 ]
 
 THE_ARTIFACT_DISCOVERY_PRODUCES = "DiscoveryReport"
@@ -45,7 +47,7 @@ def discover_the_repository_in_this_run(state: AgentState, discover: Discover) -
         )
 
     report, what_the_discovery_agent_concluded = discover(
-        clone, state["work_item"].repository
+        clone, state["work_item"].repository, state["work_item"].requested
     )
 
     a_comment_was_left(

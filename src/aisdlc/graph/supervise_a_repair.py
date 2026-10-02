@@ -36,6 +36,10 @@ from aisdlc.graph.repeat_budget import (
     THE_SETTING_NAMING_THE_REPEAT_BUDGET,
     how_many_repeats_a_run_may_buy,
 )
+from aisdlc.graph.the_agents_a_run_reasons_with import (
+    THE_DEVELOPER_IMPLEMENTATION_AGENT,
+    THE_DEVELOPER_PLANNING_AGENT,
+)
 from aisdlc.graph.the_prompt_to_supervise_a_repair import (
     THE_AGENT_THAT_SUPERVISES_A_REPAIR,
     the_prompt_to_supervise_a_repair,
@@ -57,6 +61,35 @@ WHERE_THE_SUPERVISOR_DECIDES_WHETHER_TO_REPAIR = "supervise_a_repair"
 # is a fact about the deployment rather than about a run, so the graph is handed a callable and
 # the factory closes over the model — the same arrangement every other reasoning node uses.
 SuperviseARepair = Callable[..., Command]
+
+
+class ARepairCannotHandTheWorkItemToAnotherAgentError(Exception):
+    """A supervisor named work for an agent that does not hold the work item.
+
+    **The rule is the transition table's, and the table says there is no such move.** An agent
+    that holds a work item either still holds it or lets it go by naming no agent; there is no
+    release from one agent to a peer, because one would let any agent take work another was
+    given. So a repair may only repeat the agent that already holds the item, and "rewrite the
+    plan" after the *implementation* refused is a handoff the table does not contain.
+
+    **Refused by the supervisor that wanted it, rather than left to the transition node.** The
+    state machine already refuses it, and refusing it there costs a run everything the supervisor
+    did first — six gates, a container suite on both sides of the change — and reports it as an
+    illegal transition rather than as a supervisor answer nobody can act on. This is the same
+    argument the other refusals in this module make: a decision the system may not take is said
+    so where the decision was made.
+    """
+
+    def __init__(self, holding_agent: str, the_agent_that_was_named: str) -> None:
+        """Say which handoff was refused, because "the run stopped" says nothing about it."""
+        super().__init__(
+            f"{holding_agent} holds this work item, and the supervisor asked for "
+            f"{the_agent_that_was_named} to be given it. There is no move from one agent to "
+            "another in the transition table, and a repair may only repeat the agent that "
+            f"holds the work: a work item is released to a human, not to another agent. "
+            f"{holding_agent} did the work that was refused, so {holding_agent} is the agent "
+            "that may do it again."
+        )
 
 
 class ThereIsNoSupervisorForThisRunError(Exception):
@@ -205,6 +238,21 @@ def supervise_a_repair(
             f"attempt, asked for another, and was overruled. Its judgement failed, and a record "
             f"reading as a clean stop would hide that. {THE_SETTING_NAMING_THE_REPEAT_BUDGET} "
             f"is {how_many_repeats_may_be_bought} here"
+        )
+
+    the_agent_this_repair_names = {
+        WhereTheRunShouldStartAgain.THE_CHANGE_IS_PLANNED_AGAIN: THE_DEVELOPER_PLANNING_AGENT,
+        WhereTheRunShouldStartAgain.THE_CHANGE_IS_WRITTEN_AGAIN: THE_DEVELOPER_IMPLEMENTATION_AGENT,
+    }[the_decision.where_to_start_again]
+
+    # **A repair may only repeat the agent that already holds the work.** There is no move from
+    # one agent to another in the transition table, and refusing it here rather than at the
+    # transition node is what keeps the run from spending six gates and a container suite first.
+    # **Nobody holding it is not a handoff**, which is the same rule `transition` applies and is
+    # why a work item no agent has picked up yet may still be sent anywhere.
+    if work_item.agent is not None and work_item.agent != the_agent_this_repair_names:
+        raise ARepairCannotHandTheWorkItemToAnotherAgentError(
+            work_item.agent, the_agent_this_repair_names
         )
 
     if the_decision.where_to_start_again is WhereTheRunShouldStartAgain.THE_CHANGE_IS_PLANNED_AGAIN:

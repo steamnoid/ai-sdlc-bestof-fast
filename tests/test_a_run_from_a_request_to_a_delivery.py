@@ -172,7 +172,9 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
         what_it_expects_next="the next agent reads what this one found",
     )
 
-    def discover(clone, repository) -> tuple[DiscoveryReport, DiscoveryAnswer]:
+    def discover(
+        clone, repository, what_the_run_is_about
+    ) -> tuple[DiscoveryReport, DiscoveryAnswer]:
         # **The answer holds paths and the report holds links, and that is the production split.**
         # A model is given the paths it concluded something from and the address is derived from
         # the repository, because a model asked for a link will name a host it likes. So the fake
@@ -217,7 +219,7 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
         return QaPlan(**the_found), QaPlanAnswer(judged=the_judged, **the_found)
 
     def describe_the_architecture(
-        clone, repository
+        clone, repository, what_the_run_is_about
     ) -> tuple[ArchitectureReport, ArchitectureReportAnswer]:
         the_found = {
             "findings": ["one module, no boundaries drawn yet"],
@@ -229,7 +231,7 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
             ArchitectureReportAnswer(judged=the_judged, **the_found),
         )
 
-    def inspect_for_security(clone, repository) -> SecurityReport:
+    def inspect_for_security(clone, repository, what_the_run_is_about) -> SecurityReport:
         # **An account and no finding, never an empty report.** A report with neither is refused
         # by the artifact's own rule, because a reader cannot tell a repository that was
         # examined and found clean from one no analyst ever looked at.
@@ -238,7 +240,7 @@ def _the_agents_no_model_would_produce() -> TheAgentsThisRun:
         )
 
     def plan(
-        requirements, clone, repository, what_the_suite_announced=""
+        requirements, security_report, clone, repository, what_the_suite_announced=""
     ) -> ImplementationPlanAnswer:
         return ImplementationPlanAnswer(
             judged=the_judged,
@@ -466,11 +468,29 @@ def test_a_run_started_from_the_board_reaches_delivered(
         )
 
         already_answered: set[str] = set()
-        for gate in range(1, _how_many_gates_there_are() + 1):
+        how_many_were_answered_here = 0
+
+        # **A 409 means somebody else closed the gate, and the loop asks again.**
+        #
+        # **This was a flake in one run of three, and it was this test's own fault.** The run
+        # records a decision and clears its pending question from a different writer than the one
+        # answering it, so an answer can land in the moment between this test reading a question
+        # and this test posting to it. The API says `not waiting for an answer`, which is the
+        # documented contract for a gate somebody has already closed — and the loop was asserting
+        # 200 regardless, so a legal race read as a fault in the system under test.
+        #
+        # **The answer is counted only when this test's own answer landed**, and the count is
+        # asserted at the end. That is stronger than the loop it replaces rather than weaker: it
+        # used to assume n posts meant n gates, and now it knows.
+        #
+        # I blamed this on stale bytecode for four runs before reading it. Bytecode was a
+        # coincidence, and attributing a real failure to something plausible is how a real failure
+        # becomes normal.
+        while how_many_were_answered_here < _how_many_gates_there_are():
             question = _wait_until_the_gate_is_asking(
                 the_board, the_work_item_id, already_answered
             )
-            already_answered.add(question["artifact_id"])
+            an_artifact_nobody_has_answered = question["artifact_id"]
 
             answered = the_board.post(
                 f"/api/runs/{the_work_item_id}/decisions",
@@ -480,9 +500,20 @@ def test_a_run_started_from_the_board_reaches_delivered(
                     "reason": "it answers the request",
                 },
             )
-            assert answered.status_code == 200, (
-                f"gate {gate} refused the answer: {answered.text}"
+            if answered.status_code == 200:
+                already_answered.add(an_artifact_nobody_has_answered)
+                how_many_were_answered_here += 1
+                continue
+
+            assert answered.status_code == 409, (
+                f"a gate refused an answer with {answered.status_code} and refused it for a "
+                f"reason that is not a race: {answered.text}"
             )
+
+        assert how_many_were_answered_here == _how_many_gates_there_are(), (
+            f"the run asked {how_many_were_answered_here} gates and it should have asked "
+            f"{_how_many_gates_there_are()}"
+        )
 
         _wait_until_the_run_has_finished(the_board, the_work_item_id)
 

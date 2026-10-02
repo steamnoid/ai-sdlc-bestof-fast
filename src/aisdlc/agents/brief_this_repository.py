@@ -39,6 +39,7 @@ from aisdlc.creative.the_opportunities_this_repository_offers import (
     AnOpportunityCitingAFileTheCloneDoesNotHoldError,
     TheOpportunitiesThisRepositoryOffers,
 )
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
 from aisdlc.llm.correction_budget import (
@@ -187,6 +188,7 @@ def the_prompt_to_brief_a_repository(
 def brief_this_repository(
     clone: ClonedRepository,
     repository: Repository,
+    what_the_run_is_about: CommissionedRequest | None,
     model: BaseChatModel,
     how_many_opportunities: int = 5,
     what_is_already_tracked: Sequence[AnOpenIssue] = (),
@@ -211,7 +213,7 @@ def brief_this_repository(
     other node in this system does it that way: a second question with no first question is a
     question about something else, and the model's second answer would be about that.
     """
-    inspection = an_inspection_of_the_code(clone)
+    inspection = an_inspection_of_the_code(clone, what_the_run_is_about)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()
@@ -297,12 +299,14 @@ def the_briefing_using_the_configured_model() -> Brief:
     def briefing(
         clone: ClonedRepository,
         repository: Repository,
+        what_the_run_is_about: CommissionedRequest | None,
         how_many_opportunities: int = 5,
         what_is_already_tracked: Sequence[AnOpenIssue] = (),
     ) -> TheOpportunitiesThisRepositoryOffers:
         return brief_this_repository(
             clone,
             repository,
+            what_the_run_is_about,
             a_model_for(a_configuration_from_the_environment()),
             how_many_opportunities,
             what_is_already_tracked=what_is_already_tracked,
@@ -316,7 +320,7 @@ def the_briefing_using_the_configured_model() -> Brief:
 # annotation — and the two closures the composition root and a test build have the same shape,
 # which is what a reader comparing them needs to see.
 Brief = Callable[
-    [ClonedRepository, Repository, int, Sequence[AnOpenIssue]],
+    [ClonedRepository, Repository, CommissionedRequest | None, int, Sequence[AnOpenIssue]],
     TheOpportunitiesThisRepositoryOffers,
 ]
 

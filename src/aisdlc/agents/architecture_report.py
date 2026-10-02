@@ -66,3 +66,36 @@ class ArchitectureReport(BaseModel):
             )
 
         return self
+
+    @model_validator(mode="after")
+    def it_must_name_a_module(self) -> ArchitectureReport:
+        """A report naming no module is refused, and the rule above would have accepted it.
+
+        **The one field the "at least one" rule does not reach.** Its own justification is that
+        a repository can have no architectural risk, and that is why the rule is "at least one"
+        rather than "all of them" — but no repository has zero modules. A single-file script is
+        one module. An empty list here is not an observation about the repository, it is the
+        analyst declining a question it was asked, and `modules: []` came back in roughly one run
+        in three of the neighbouring-agent tier.
+
+        **What an empty `modules` costs downstream is why this is refused rather than
+        tolerated.** The QA analyst is handed this report and asked to write scenarios against
+        it, and with nothing named there is nothing to check anything against — the pair's own
+        assertion says so: *"the architecture report names no modules, so there was nothing for
+        the QA plan to check against"*.
+
+        **Raised rather than defaulted, because the caller can act on this one.** A correction
+        says "you named no modules, name them" and goes back to the model; an answer that says
+        nothing arrives at the gate as a report that agrees with every possible architecture,
+        which is the shape a report takes when the analyst was never asked.
+        """
+        if not a_value_that_says_something(self.modules):
+            raise EmptyArchitectureReportError(
+                f"{THE_ARCHITECTURE_ANALYST_AGENT} named no modules. Every repository has at "
+                "least one — a single-file script is one — so an empty list is not an "
+                "observation about this repository but the answer to no question at all. The QA "
+                "plan is written against what is named here, so an empty one leaves it with "
+                "nothing to check anything against."
+            )
+
+        return self

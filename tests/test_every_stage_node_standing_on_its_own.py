@@ -211,10 +211,23 @@ def _a_state_that_has_cloned(a_projects_root: Path) -> AgentState:
 
 
 def _a_state_somebody_approved_the_requirements(a_projects_root: Path) -> AgentState:
-    """A run carrying approved requirements and a clone, which is what the planner is handed."""
+    """A run carrying approved requirements, an approved `SecurityReport` and a clone.
+
+    **The security report is here because the planner now refuses without it**, and that refusal is
+    the rule this state is shaped around: a plan is planned from what three gates approved, and a
+    planner handed nothing would plan around the absence rather than say so. Its own test is
+    `test_the_planner_refuses_a_run_that_never_passed_the_security_gate`, and this helper is the
+    state that *has* passed — so the two halves of one rule are a state that may be planned and a
+    state that may not.
+
+    **A report with an account and no finding, not a finding.** `SecurityReport` refuses a report
+    that says nothing, because silence in a security report is read as safety, and this test is
+    about what the planner is handed rather than about whether the repository is safe.
+    """
     return {
         **_a_state_that_has_cloned(a_projects_root),
         "requirements": THE_REQUIREMENTS_A_PERSON_APPROVED,
+        "security_report": SecurityReport(nothing_found_because="one module and a README"),
     }
 
 
@@ -269,7 +282,7 @@ def test_discovery_writes_the_report_and_the_artifact_the_gate_will_ask_about(
 
     what_it_wrote = discover_the_repository_in_this_run(
         _a_state_that_has_cloned(a_projects_root),
-        lambda clone, repository: (
+        lambda clone, repository, requested: (
             report,
             DiscoveryAnswer(
                 languages=["Python"], architecture_summary="one module", judged=A_JUDGEMENT
@@ -293,7 +306,7 @@ def test_an_agent_that_reasons_leaves_a_note_a_person_reads(a_projects_root: Pat
 
     discover_the_repository_in_this_run(
         state,
-        lambda clone, repository: (
+        lambda clone, repository, requested: (
             DiscoveryReport(languages=["Python"], architecture_summary="one module"),
             DiscoveryAnswer(languages=["Python"], judged=A_JUDGEMENT),
         ),
@@ -419,7 +432,7 @@ def test_the_architecture_analyst_is_handed_the_clone_and_the_repository(
     what_the_analyst_was_handed: list[tuple[object, object]] = []
     found = {"findings": ["one module"], "modules": ["health.py"]}
 
-    def analyze(clone, repository):
+    def analyze(clone, repository, requested):
         what_the_analyst_was_handed.append((clone, repository))
         return (
             ArchitectureReport(**found),
@@ -440,7 +453,9 @@ def test_the_architecture_analyst_refuses_a_run_with_no_clone(a_projects_root: P
     with pytest.raises(TheRepositoryHasNotBeenClonedYetError):
         analyze_the_architecture_in_this_run(
             _a_state_at_the_start(a_projects_root),
-            lambda clone, repository: pytest.fail("the analyst was asked with no clone"),
+            lambda clone, repository, requested: pytest.fail(
+                "the analyst was asked with no clone"
+            ),
         )
 
 
@@ -449,7 +464,7 @@ def test_the_security_analyst_is_handed_the_clone_and_the_repository(
 ) -> None:
     what_the_analyst_was_handed: list[tuple[object, object]] = []
 
-    def inspect(clone, repository):
+    def inspect(clone, repository, requested):
         what_the_analyst_was_handed.append((clone, repository))
         return SecurityReport(nothing_found_because="one commit of markdown")
 
@@ -474,7 +489,10 @@ def test_the_security_analyst_leaves_no_note_because_its_answer_cannot_carry_one
     state = _a_registered_state_that_has_cloned(a_projects_root)
 
     inspect_for_security_risk_in_this_run(
-        state, lambda clone, repository: SecurityReport(nothing_found_because="one commit")
+        state,
+        lambda clone, repository, requested: SecurityReport(
+            nothing_found_because="one commit"
+        ),
     )
 
     assert _the_notes_on_the_card(state) == []
@@ -496,9 +514,9 @@ def test_the_planner_is_handed_the_requirements_the_clone_and_the_runner(
     what_the_planner_was_handed: list[tuple[object, ...]] = []
     state = _a_state_somebody_approved_the_requirements(a_projects_root)
 
-    def plan(requirements, clone, repository, what_the_suite_announced):
+    def plan(requirements, security_report, clone, repository, what_the_suite_announced):
         what_the_planner_was_handed.append(
-            (requirements, clone, repository, what_the_suite_announced)
+            (requirements, security_report, clone, repository, what_the_suite_announced)
         )
         return _a_plan_from_a_planner_that_answers()
 
@@ -507,10 +525,16 @@ def test_the_planner_is_handed_the_requirements_the_clone_and_the_runner(
     assert len(what_the_planner_was_handed) == 1
     what_it_got = what_the_planner_was_handed[0]
     assert what_it_got[0] is state["requirements"]
-    assert what_it_got[1] is A_CLONE
-    assert what_it_got[2] == A_REPOSITORY
-    assert isinstance(what_it_got[3], str), (
-        f"the fourth argument is {what_it_got[3]!r} rather than what the runner announced, and "
+    assert what_it_got[1] is state["security_report"], (
+        "the planner is handed the approved SecurityReport, and it is handed the one the run "
+        "carries rather than a fresh one — a plan that ignores findings three gates approved is a "
+        "plan nobody told it not to write, and the refusal for a run with none is "
+        "`SecurityReportHaveNotBeenApprovedYetError`"
+    )
+    assert what_it_got[2] is A_CLONE
+    assert what_it_got[3] == A_REPOSITORY
+    assert isinstance(what_it_got[4], str), (
+        f"the fifth argument is {what_it_got[4]!r} rather than what the runner announced, and "
         "the planner reads emptiness as 'ask nothing'"
     )
 
@@ -564,7 +588,9 @@ def test_the_planner_writes_the_version_of_the_plan_it_has_already_written(
 
     what_it_wrote = plan_the_change_in_this_run(
         {**state, "work_item": the_work_item},
-        lambda requirements, clone, repository, announced: _a_plan_from_a_planner_that_answers(),
+        lambda requirements, security_report, clone, repository, announced: (
+            _a_plan_from_a_planner_that_answers()
+        ),
     )
 
     assert what_it_wrote["presented_artifact_version"] == 2, (
@@ -577,7 +603,9 @@ def test_the_planner_refuses_a_run_with_no_approved_requirements(a_projects_root
     with pytest.raises(ThePlanHasNoApprovedRequirementsError):
         plan_the_change_in_this_run(
             _a_state_that_has_cloned(a_projects_root),
-            lambda requirements, clone, repository, announced: pytest.fail("it planned anyway"),
+            lambda requirements, security_report, clone, repository, announced: pytest.fail(
+                "it planned anyway"
+            ),
         )
 
 
@@ -592,7 +620,7 @@ def test_a_plan_naming_a_test_the_suite_does_not_collect_is_handed_to_the_superv
     """
 
     def a_planner_that_found_an_uncollected_test(
-        requirements, clone, repository, what_the_suite_announced
+        requirements, security_report, clone, repository, what_the_suite_announced
     ):
         raise PlannedTestDirectoryNotCollectedError(["tests/e2e/W-1"], ["tests/unit"])
 

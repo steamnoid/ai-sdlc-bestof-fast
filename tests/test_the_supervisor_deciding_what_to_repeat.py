@@ -39,12 +39,16 @@ from langgraph.types import Command
 import aisdlc.graph.lifecycle as lifecycle_module
 import aisdlc.verify_the_change as verify_the_change
 from aisdlc.agents import implement_the_plan
+from aisdlc.agents.implement_the_plan import (
+    FileToWrite,
+    _every_file_the_plan_named_was_written,
+)
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.domain.commissioned_request import a_request_about
 from aisdlc.domain.repository import Repository
 from aisdlc.domain.role import Role
 from aisdlc.domain.stage import Stage
-from aisdlc.domain.state_machine import transition
+from aisdlc.domain.state_machine import StateMachineError, transition
 from aisdlc.domain.the_work_each_agent_has_done import (
     TheWorkEachAgentHasDone,
     TheWorkOneAgentHasDone,
@@ -53,10 +57,15 @@ from aisdlc.domain.work_item import WorkItem, a_work_item_commissioned_for_an_ag
 from aisdlc.graph import apply_node
 from aisdlc.graph.agent_state import WHAT_STOPPED_THIS_RUN, AgentState
 from aisdlc.graph.supervise_a_repair import (
+    ARepairCannotHandTheWorkItemToAnotherAgentError,
     TheRepeatBudgetRanOutError,
     TheSupervisorJudgedThisIsNotRepairingError,
     supervise_a_repair,
     the_text_of_the_decision_this_is,
+)
+from aisdlc.graph.the_agents_a_run_reasons_with import (
+    THE_DEVELOPER_IMPLEMENTATION_AGENT,
+    THE_DEVELOPER_PLANNING_AGENT,
 )
 from aisdlc.graph.what_to_repeat import (
     WhatOneAgentMustDoAgain,
@@ -1197,3 +1206,210 @@ def _the_names_imported_from_where_they_are_owned(the_lifecycle: ast.Module) -> 
             if isinstance(what_it_holds, str):
                 the_names[an_imported.asname or an_imported.name] = what_it_holds
     return the_names
+def test_a_repair_may_not_put_a_work_item_into_another_agents_hands() -> None:
+    """The rule run six broke, and the rule the state machine already enforces.
+
+    **A real run crashed on this.** The verification was refused, the supervisor answered
+    *rewrite the plan*, and the route took the work item straight from `aisdlc-dev-impl` to
+    `aisdlc-dev-plan`:
+
+        StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it
+        to aisdlc-dev-plan; a work item is released to a human, not to another agent
+
+    The state machine was right and the route was wrong, and nothing in this file had heard of
+    the combination — because the two places that could be wrong are in different modules and the
+    supervisor tests only ever look at what the supervisor *answered*.
+
+    **So this asks the question at the only place both facts are visible at once:** for every
+    agent a repair may name, can that agent legally be handed this work item from where it is?
+    That holds only if the holder is already that agent. Everything else needs a release first,
+    and a release is a move to **nobody** — `AWAITING_HUMAN_APPROVAL` with no agent at all, or
+    `AWAITING_AGENT_PICKUP` held by nobody, which is what `let_go_of_the_work_item` does and what
+    a real run needed twice before this file had one.
+
+    **A characterisation test, not a change, and it was right about the rule and wrong about the
+    table.** It is green now and it should stay green: it names the constraint that whoever builds
+    the release has to satisfy, so a release that forgets to let go fails here rather than in a
+    twenty-minute run. When the release was built, the half of its docstring that said the table
+    had nowhere to release to became false, and the half that says a repair may not name a peer
+    stayed true — which is the only reason the change was safe to make at all.
+    """
+    the_agents_a_repair_may_name = (
+        THE_DEVELOPER_PLANNING_AGENT,
+        THE_DEVELOPER_IMPLEMENTATION_AGENT,
+    )
+
+    for the_agent_named in the_agents_a_repair_may_name:
+        for held_by, to_stage in (
+            (THE_DEVELOPER_IMPLEMENTATION_AGENT, Stage.AWAITING_AGENT_PICKUP),
+            (THE_DEVELOPER_PLANNING_AGENT, Stage.AWAITING_AGENT_PICKUP),
+        ):
+            the_work_item = _a_work_item_held_by(held_by)
+            if held_by == the_agent_named:
+                continue
+            with pytest.raises(StateMachineError):
+                transition(
+                    the_work_item,
+                    to_stage,
+                    the_agent_named,
+                    Role.DEV,
+                )
+
+    # And the release that would make it legal, named here so the rule above is not read as
+    # "a repair can never change the holder": handing it to *no* agent is how the holder lets go.
+    transition(
+        _a_work_item_held_by(THE_DEVELOPER_IMPLEMENTATION_AGENT),
+        Stage.AWAITING_HUMAN_APPROVAL,
+        None,
+        Role.DEV,
+    )
+
+
+def _a_work_item_held_by(agent: str) -> WorkItem:
+    """A work item an agent is holding, which is where a refusal leaves one."""
+    the_work_item = a_work_item_commissioned_for_an_agent(
+        work_item_id="issue-7",
+        repository=A_REPOSITORY,
+        accountable_role=Role.DEV,
+        commissioned_by="a person",
+        requested=a_request_about("add a health endpoint"),
+    )
+    return the_work_item.model_copy(
+        update={"stage": Stage.IN_PROGRESS_BY_AGENT, "agent": agent},
+    )
+
+
+def test_a_repair_that_hands_the_work_item_to_another_agent_stops_the_run(
+    tmp_path: Path, an_open_register: Path, monkeypatch
+) -> None:
+    """The crash run six hit, refused here instead of twenty minutes later.
+
+    **Every routing test in this file used a work item nobody was holding**, because that is
+    what `a_work_item_commissioned_for_an_agent` returns. So "rewrite the plan" was only ever
+    exercised with an empty hand, and a route into the planner's pickup passed — while in a real
+    run the implementer is holding the item, and `transition` refuses the handover outright:
+
+        StateMachineError: aisdlc-dev-impl holds this work item and cannot hand it to
+        aisdlc-dev-plan; a work item is released to a human, not to another agent
+
+    **A repair may only repeat the agent that already holds the work.** There is no release from
+    one agent straight into a peer's hands in the transition table, and
+    `_takes_the_work_item_from_the_holding_agent` refuses that move on purpose: a single-holder
+    rule is the only thing that makes "who is working on this" a question with an answer.
+
+    **What changed after this test was written, and what did not.** It used to say that
+    `AWAITING_AGENT_PICKUP` is not a release either, because the biconditional held that a work
+    item waiting for a pickup is held by an agent — and that sentence is now false. A released work
+    item waits in `AWAITING_AGENT_PICKUP` held by **nobody**, which is why that stage is in
+    `STAGES_WHERE_EITHER_IS_ALLOWED` and why the table has one row letting a queued work item be
+    claimed. `let_go_of_the_work_item` is that release, and a real run reached it and died twice
+    before it existed. **The rule this test protects is unchanged and is still the rule: a release
+    is to nobody, and naming a peer is the move the table refuses.**
+
+    So the supervisor stops when its verdict would be a peer handover, and says why in a sentence
+    naming both agents — because a run that stops without saying which handoff was refused reads as
+    a supervisor that ran out of ideas.
+    """
+    monkeypatch.setenv("AISDLC_REPEAT_BUDGET", "0")
+    the_model = _AModelThatAnswers(
+        _a_decision(
+            WhereTheRunShouldStartAgain.THE_CHANGE_IS_PLANNED_AGAIN,
+            _a_verdict(THE_PLANNER),
+            _a_verdict(THE_IMPLEMENTER, must_repeat=False, why="the implementer was right"),
+        )
+    )
+
+    with pytest.raises(ARepairCannotHandTheWorkItemToAnotherAgentError) as what_happened:
+        supervise_a_repair(
+            _a_work_item_held_by(THE_IMPLEMENTER),
+            tmp_path,
+            "the change was made and the suite still fails",
+            the_model,  # type: ignore[arg-type]
+        )
+
+    assert str(THE_IMPLEMENTER) in str(what_happened.value)
+    assert str(THE_PLANNER) in str(what_happened.value)
+
+
+def test_a_planned_test_named_by_node_id_is_satisfied_by_writing_that_file() -> None:
+    """A real run refused a perfect implementer, because a node ID is not a path.
+
+    Run seven planned seven tests as `tests/test_what_two_real_runs_found.py::test_…` and the
+    guard compared those strings against the paths the implementer wrote, so the seven could
+    never be found and `PlannedFileNotWrittenError` fired naming all seven — on a run whose
+    checkout was, as it happens, empty for a different reason.
+
+    **`tests_to_add` is a list of strings and nothing checks a string is a path**, which is the
+    same shape as the Dockerfile: the model is allowed to be more specific than the field, and
+    the field is not what the model obeys. `implementation_plan.py` says outright that this is
+    the one list whose paths are not checked against the clone, and it is right — but nothing
+    then *normalises* it either, so the comparison at the end is between two spellings of one
+    place.
+
+    **A test named `file::name` is the file `name` lives in, and writing the file is what the
+    plan asked for.** So the node part is dropped on both sides before comparing. Dropping it
+    only on the plan's side would let a plan claim `a.py::test_x` while the implementer wrote
+    `b.py` and be satisfied; comparing the file part on both sides keeps the file the thing that
+    has to match, which is the claim the trace actually makes.
+    """
+    the_plan = _a_plan_naming_a_test_by_node_id()
+    what_was_written = [
+        _a_file_written_to("tests/test_what_two_real_runs_found.py"),
+        _a_file_written_to("src/aisdlc/tools/run_command.py"),
+    ]
+
+    _every_file_the_plan_named_was_written(the_plan, what_was_written)
+
+
+def _a_plan_naming_a_test_by_node_id() -> ImplementationPlan:
+    """A plan whose test list holds pytest node IDs, which is what a real model returned."""
+    return ImplementationPlan(
+        what_this_change_is_for="confine a command to the checkout",
+        files_to_change=["src/aisdlc/tools/run_command.py"],
+        files_to_add=[],
+        tests_to_add=[
+            "tests/test_what_two_real_runs_found.py::test_the_checkout_is_a_place_and_not_a_"
+            "string_prefix_so_srv_checkout_2_is_refused",
+        ],
+    )
+
+
+def _a_file_written_to(path: str) -> FileToWrite:
+    """One file the implementer said it wrote, at the path a file lives at."""
+    return FileToWrite(path=path, content="the contents\n")
+
+
+def test_a_commit_stages_a_file_rather_than_a_test_named_by_node_id() -> None:
+    """A real run verified a change and then could not commit it, because git wants a path.
+
+    **Eleven runs in, and this is the closest.** The change was written, the container suite ran
+    on both sides, and then:
+
+        TheChangeWasNotCommittedError: git add refused … fatal: pathspec
+        'tests/test_the_trust_boundary_of_run_command.py::test_may_run_only_inside_none_runs_
+        in_the_given_directory' did not match any files
+
+    A pytest node ID names a test exactly and is what the verifier needs. `git add` wants the
+    file, so the commit step handed it a name and got a refusal — after the expensive part had
+    already been paid for.
+
+    **And the same line dropped `files_to_add` altogether**, so a plan that introduces a file
+    this repository does not have yet — which is exactly what
+    `tests/test_the_trust_boundary_of_run_command.py` is — would never be staged, and a
+    verification would pass over a change the branch does not carry.
+
+    So the node part is taken off before staging, on the same rule the applied-change guard uses,
+    and all three of a plan's lists are staged rather than two.
+    """
+    from aisdlc.agents.a_commit_recording_the_change import the_paths_a_commit_must_stage
+
+    the_plan = _a_plan_naming_a_test_by_node_id()
+    the_plan = the_plan.model_copy(
+        update={"files_to_add": ["tests/test_the_trust_boundary_of_run_command.py"]}
+    )
+
+    assert the_paths_a_commit_must_stage(the_plan) == [
+        "src/aisdlc/tools/run_command.py",
+        "tests/test_the_trust_boundary_of_run_command.py",
+        "tests/test_what_two_real_runs_found.py",
+    ]

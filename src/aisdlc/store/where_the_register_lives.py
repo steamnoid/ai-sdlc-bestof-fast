@@ -53,6 +53,33 @@ def the_register_lives_at(where: Path) -> None:
         _the_connection.row_factory = sqlite3.Row
 
 
+def the_register_is_closed() -> None:
+    """Let go of the register, so nothing can reach it until it is opened again.
+
+    **The counterpart of `the_register_lives_at`, and it exists because one connection for the
+    whole process is only safe if something can close it.** Opening always closed the previous
+    handle, which made the last opener the owner for the rest of the session — correct for a
+    process that opens a register once at startup and exits, and wrong for anything that opens
+    more than one, which the tests are.
+
+    **Closing sets the handle to `None` rather than only closing it**, because a closed connection
+    that is still held would be handed out again by `the_register()` and would answer from a file
+    that is not there. Unheld and unanswered is the only state that cannot be mistaken for a
+    register somebody opened.
+
+    **Safe to call when nothing is open**, because the tests call it after every test without
+    knowing whether that test touched the register at all, and a close that raised on a closed
+    register would need every caller to check first.
+    """
+    global _the_connection
+
+    with _the_lock:
+        if _the_connection is None:
+            return
+        _the_connection.close()
+        _the_connection = None
+
+
 def where_the_register_should_live() -> Path:
     """The register's file: one file, in the directory every run's directory also hangs off.
 

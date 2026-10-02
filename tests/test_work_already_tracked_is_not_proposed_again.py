@@ -28,11 +28,14 @@ refusing to answer would make the common case the special one.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
 from aisdlc.domain.repository import Repository
 from aisdlc.tools.github_list_open_issues import (
+    AnOpenIssue,
     WorkAlreadyTrackedError,
     read_the_open_issues,
     the_issues_listed_as_tracked,
@@ -179,15 +182,25 @@ def test_an_issue_with_no_body_is_still_a_duplicate() -> None:
         the_issues_listed_as_tracked("Add an expiry to the session cookie", already_filed)
 
 
-def test_filing_refuses_a_duplicate_before_anything_is_opened() -> None:
+def test_filing_refuses_a_duplicate_before_anything_is_opened(tmp_path: Path) -> None:
     """The backstop in the place it has to be: before the issue exists.
 
     **An issue that is opened and then found to be a duplicate has already landed.** Closing it
     again is a thing a person has to do on somebody else's board, and the person who has to do it
     is the one whose queue got longer. So the refusal is in `filing_what_the_briefing_found`,
     ahead of `open_the_issue`, rather than in the prompt that asked the model nicely.
+
+    **`tmp_path`, and a register opened in it, because this test was only ever passing on
+    somebody else's register.** It asks the filing path to prepare a table, which reaches the
+    register, and it never opened one — so it inherited whatever handle the last test file left
+    behind. That is the whole suite's result being a function of test order rather than of the
+    code, and it was invisible until one autouse fixture closed the register between tests.
     """
     import pytest as _pytest
+
+    from aisdlc.store.where_the_register_lives import the_register_lives_at
+
+    the_register_lives_at(tmp_path / "the-register.sqlite3")
 
     from aisdlc.agents.what_an_agent_judged import WhatAnAgentJudged
     from aisdlc.creative.an_opportunity import AnOpportunity
@@ -236,3 +249,53 @@ def test_filing_refuses_a_duplicate_before_anything_is_opened() -> None:
         "an issue was opened for work that is already tracked, and it has to be closed by a person "
         "on a board that is not ours"
     )
+
+
+def test_two_different_problems_in_one_codebase_are_not_the_same_work() -> None:
+    """**A false positive caught by filing for real, the same day the rule was written.**
+
+    This asked to teach `shell.run_tests` a Python repository; the repository already had an open
+    issue about the trust boundary of `shell.run_command`. Different files, different problems, and
+    the refusal fired anyway because they shared `run` and `tests` — **which are half the words in
+    this codebase's file names.** A count of two shared words cannot tell a coincidence from a
+    duplicate in a vocabulary that dense, and the rule refused work that was genuinely new.
+
+    **The fraction is what decides it now, because a coincidence cannot make up a majority.** Two
+    of nine meaningful words in the shorter title is a quarter; the real duplicate this exists for
+    shares three of three.
+    """
+    already_filed = [
+        AnOpenIssue(
+            number=4,
+            title=(
+                "Decide and write down the trust boundary of "
+                "src/aisdlc/tools/run_command.py: which "
+                "shell commands an agent may run, whether the working directory is confined to the "
+                "project directory, and what inspect_for_security_risk.py is meant to catch. Then "
+                "enforce it where the command is issued, and assert it in tests."
+            ),
+        )
+    ]
+
+    the_issues_listed_as_tracked(
+        "Teach shell.run_tests a Python repository: it is hardcoded to npm and cannot verify a "
+        "change to this codebase",
+        already_filed,
+    )
+
+
+def test_the_same_work_still_goes_on_being_refused_after_the_rule_changed() -> None:
+    """**A rule that got looser needs a test that it did not get looser than useless.**
+
+    The fraction is the change that stops the false positive, and the failure mode of a change like
+    it is that the original case quietly stops being caught. This is that case, unchanged, still
+    refused.
+    """
+    already_filed = [
+        AnOpenIssue(number=7, title="The session cookie has no expiry")
+    ]
+
+    with pytest.raises(WorkAlreadyTrackedError):
+        the_issues_listed_as_tracked(
+            "Add an expiry to the session cookie", already_filed
+        )

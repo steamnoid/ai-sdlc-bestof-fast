@@ -47,6 +47,7 @@ import time
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.agents.implementation_plan import ImplementationPlan
 from aisdlc.agents.what_an_agent_judged import WhatAnAgentJudged
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
@@ -181,10 +182,18 @@ def the_prompt_to_implement(
         for path in plan.files_to_change
     )
 
+    what_the_plan_said_it_makes = (
+        plan.the_change_it_makes
+        or "the plan said nothing, so read the files and the paths below"
+    )
+
     return (
         f"You are implementing one approved plan for the public repository "
         f"{clone.path.name}.\n"
         "Write the files the plan names, and nothing else.\n"
+        "\n"
+        "What the approved plan says this change makes, in the plan's own words:\n"
+        f"{what_the_plan_said_it_makes}\n"
         "\n"
         "Answer with `files`: for every file the plan names, its path and the **complete "
         "text that file should end up holding**. The whole text, not a diff and not an "
@@ -195,6 +204,7 @@ def the_prompt_to_implement(
         f"{', '.join(the_paths_the_plan_names(plan))}\n"
         "\n"
         "Each file below is shown with the text it holds right now:\n\n"
+        f"{the_rule_about_naming_a_file()}"
         f"{what_there_is_now}"
         + _no_correction_on_the_first_question(what_was_wrong)
     )
@@ -343,6 +353,25 @@ def _every_written_file_was_named_by_the_plan(
         seen.append(write.path)
 
 
+def _the_file_a_test_is_written_into(what_was_named: str) -> str:
+    """The file part of a name, for a plan that named a test rather than a path.
+
+    **A real run refused a perfect implementer here.** Seven tests were planned as
+    `tests/test_what_two_real_runs_found.py::test_…` — pytest node IDs, which name a test
+    exactly and are what the verifier needs — and compared against the paths an implementer
+    wrote, so the seven could never match and the guard fired naming all seven. `tests_to_add`
+    is a list of strings and nothing checks a string is a path, so a model may be more
+    specific than the field without anything objecting.
+
+    **The file part on both sides, and not only on the plan's.** Writing the file is what the
+    plan asked for, so `a.py::test_x` is satisfied by writing `a.py`. But dropping the node
+    part from one side alone would let a plan claim `a.py::test_x` while the implementer wrote
+    `b.py`; comparing the file on both sides keeps the file the claim, which is what the
+    trace says afterwards.
+    """
+    return what_was_named.split("::", 1)[0]
+
+
 def _every_file_the_plan_named_was_written(
     plan: ImplementationPlan, written: list[FileToWrite]
 ) -> None:
@@ -352,9 +381,11 @@ def _every_file_the_plan_named_was_written(
     the plan describes, while every record between the requirement and the pull request
     still read as complete.
     """
-    written_paths = [write.path for write in written]
+    written_paths = [_the_file_a_test_is_written_into(write.path) for write in written]
     missing = [
-        path for path in the_paths_the_plan_names(plan) if path not in written_paths
+        path
+        for path in the_paths_the_plan_names(plan)
+        if _the_file_a_test_is_written_into(path) not in written_paths
     ]
 
     if missing:

@@ -142,8 +142,20 @@ def _an_opportunity(what: str, how_it_would_be_known: str) -> AnOpportunity:
 def _a_briefing_finding(*opportunities: AnOpportunity):
     """A model that has already been asked and has already answered, as the real node would."""
 
-    def briefing(the_clone, repository, what_the_environment_allows, what_was_already_tracked):
+    def briefing(
+        the_clone,
+        repository,
+        what_the_run_is_about,
+        what_the_environment_allows,
+        what_was_already_tracked,
+    ):
         del the_clone, what_the_environment_allows, what_was_already_tracked
+        assert what_the_run_is_about is None, (
+            "a briefing is not asked about anything — it reads a repository and says what it "
+            f"offers — so it is handed {what_the_run_is_about!r} as the subject of a run. The "
+            "argument is on the seam because a briefing and an analyst now share one inspection "
+            "builder, and that builder is asked what the run is about"
+        )
         return TheOpportunitiesThisRepositoryOffers(
             about=repository,
             what_this_repository_is="a small project with one file in it",

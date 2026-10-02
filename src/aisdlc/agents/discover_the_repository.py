@@ -20,6 +20,7 @@ from aisdlc.agents.discovery_report import (
     EvidenceFile,
     evidence_for,
 )
+from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.discover_node import Discover
 from aisdlc.llm.asking_a_model_for import ask_a_model_for
@@ -114,7 +115,10 @@ def the_prompt_to_discover_a_repository(
 
 
 def discover_the_repository(
-    clone: ClonedRepository, repository: Repository, model: BaseChatModel
+    clone: ClonedRepository,
+    repository: Repository,
+    what_the_run_is_about: CommissionedRequest | None,
+    model: BaseChatModel,
 ) -> tuple[DiscoveryReport, DiscoveryAnswer]:
     """The discovery report for a repository this run cloned.
 
@@ -141,7 +145,7 @@ def discover_the_repository(
     # lesson was not "the security analyst needs more" — it was that **one inspection built for
     # one consumer was being handed to another**, and a real run then refused a discovery report
     # for citing a `Dockerfile` whose contents the report itself said it had not seen.
-    inspection = an_inspection_of_the_code(clone)
+    inspection = an_inspection_of_the_code(clone, what_the_run_is_about)
     what_was_wrong: str | None = None
 
     began_at = time.monotonic()
@@ -269,10 +273,15 @@ def the_discovery_using_the_configured_model() -> Discover:
     asks the environment. A test hands it a different function and never reads a key.
     """
     def discovering(
-        clone: ClonedRepository, repository: Repository
+        clone: ClonedRepository,
+        repository: Repository,
+        what_the_run_is_about: CommissionedRequest | None,
     ) -> tuple[DiscoveryReport, DiscoveryAnswer]:
         return discover_the_repository(
-            clone, repository, a_model_for(a_configuration_from_the_environment())
+            clone,
+            repository,
+            what_the_run_is_about,
+            a_model_for(a_configuration_from_the_environment()),
         )
 
     return discovering

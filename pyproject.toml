@@ -116,4 +116,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
-addopts = "--strict-markers --import-mode=importlib"
+addopts = "-m 'not e2e and not integration' --strict-markers --import-mode=importlib"
+markers = [
+    "e2e: real agent, real model, real repository, opt-in",
+    "integration: a real container, which is a real dependency in the same sense a credential is",
+]
