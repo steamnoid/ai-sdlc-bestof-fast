@@ -22,7 +22,10 @@ from aisdlc.agents.architecture_report_answer import ArchitectureReportAnswer
 from aisdlc.agents.how_to_name_a_file import the_rule_about_naming_a_file
 from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -135,7 +138,8 @@ def analyze_the_architecture(
                 boundaries=answer.boundaries,
                 risks=answer.risks,
             ), answer
-        except (EmptyArchitectureReportError, ValidationError) as refused:
+        except (EmptyArchitectureReportError, ValidationError,
+            AModelAnsweredInAShapeThisSystemCannotReadError) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
 

@@ -29,7 +29,10 @@ from aisdlc.agents.security_report import (
 from aisdlc.agents.security_report_answer import SecurityReportAnswer
 from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -150,7 +153,8 @@ def inspect_for_security_risk(
                 and what_was_wrong is not None
                 else None,
             )
-        except (EmptySecurityReportError, ValidationError) as refused:
+        except (EmptySecurityReportError, ValidationError,
+            AModelAnsweredInAShapeThisSystemCannotReadError) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
 

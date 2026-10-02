@@ -41,7 +41,10 @@ from aisdlc.creative.the_opportunities_this_repository_offers import (
 )
 from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -237,7 +240,11 @@ def brief_this_repository(
                 ),
                 what_the_clone_holds(clone),
             )
-        except (ValidationError, AnOpportunityCitingAFileTheCloneDoesNotHoldError) as refused:
+        except (
+            AnOpportunityCitingAFileTheCloneDoesNotHoldError,
+            ValidationError,
+            AModelAnsweredInAShapeThisSystemCannotReadError,
+        ) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
 

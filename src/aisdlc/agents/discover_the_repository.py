@@ -23,7 +23,10 @@ from aisdlc.agents.discovery_report import (
 from aisdlc.domain.commissioned_request import CommissionedRequest
 from aisdlc.domain.repository import Repository
 from aisdlc.graph.discover_node import Discover
-from aisdlc.llm.asking_a_model_for import ask_a_model_for
+from aisdlc.llm.asking_a_model_for import (
+    AModelAnsweredInAShapeThisSystemCannotReadError,
+    ask_a_model_for,
+)
 from aisdlc.llm.correction_budget import (
     how_a_model_is_told_what_was_wrong,
     may_this_run_keep_asking,
@@ -162,7 +165,8 @@ def discover_the_repository(
                 )
             )
             return _the_report_about(clone, repository, answer, inspection)
-        except (CitedFileNotFoundError, ValidationError) as refused:
+        except (CitedFileNotFoundError, ValidationError,
+            AModelAnsweredInAShapeThisSystemCannotReadError) as refused:
             what_was_wrong = how_a_model_is_told_what_was_wrong(refused)
             last = refused
 

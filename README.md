@@ -75,7 +75,7 @@ noticed and an answer nobody asked for are the same failure wearing different na
 ## The test
 
 ```bash
-uv run pytest -q     # 227 passed, 3 skipped, 8 deselected, ~12s, no network, no model, no credential, no container
+uv run pytest -q     # 230 passed, 3 skipped, 8 deselected, ~10s, no network, no model, no credential, no container
 
 # The three skips are the real tier, and each one prints what it is missing: one needs a real
 # model, two need a real GITHUB_TOKEN and a repository to file against. They are collected by the
@@ -1039,6 +1039,32 @@ Stated rather than left to be discovered.
   thing to ask a model for on purpose. `tests/test_the_supervisor_deciding_what_to_repeat.py` and
   a whole run through the real graph both drive the routing; what neither can do is make a real
   model misbehave on demand.
+- **An answer the parser could not read ends a run, and the refusal it was corrected on did not
+  name it.** A real run asked the planner for a plan and got a tool call whose arguments were not
+  valid JSON — the most ordinary wrong answer a tool-calling model can give. LangChain's handler
+  for *that* case builds its own message by reading the field it was about, so what escaped was a
+  bare `KeyError` from inside the handler rather than the `JSONDecodeError` it was written for:
+
+      File "langchain_core/output_parsers/openai_tools.py", line 66, in _parse_ai_message_tool_call
+          except JSONDecodeError as e:
+              msg = (
+                  f"Function {raw_tool_call['function']['name']} arguments:\n\n"
+      ...
+      KeyError: 'name'
+
+  **All nine correction loops name pydantic's `ValidationError` and none named the reader's.** So
+  the run ended at the sixth gate holding a budget and a prompt written for precisely this. The
+  failure is now converted at `ask_a_model_for` — the one place every agent goes through — into
+  `AModelAnsweredInAShapeThisSystemCannotReadError`, which carries the reader's own type and message
+  because **the correction prompt is written from a refusal's words**, and a refusal saying only
+  "unreadable" buys a second question that repeats the first. **A `KeyError` and not `Exception`:**
+  a broader catch would convert a bug in a caller's own code into "the model misbehaved", which is
+  the one claim a correction prompt must never make.
+
+  **The one place still not covered is the supervisor**, which asks its question with no correction
+  loop at all — so one malformed answer there ends a run that has already paid for everything up to
+  that point. It is named here rather than fixed in the same cycle, because giving it a budget and
+  a prompt is a decision rather than a mechanical edit.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
@@ -1147,6 +1173,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_model_answer_nobody_can_read_is_a_refusal.py` | that an answer the reader could not read becomes this package's own refusal — carrying the reader's own words, so a correction prompt can be written from it — and that a readable answer comes back untouched |
   | `test_a_real_model_judging_a_real_refusal.py` | a real model's judgement inside a real graph; skips loudly without a credential |
   | `test_the_readme_names_what_this_repository_holds_itself_to.py` | that this table names every test file, which it twice did not |
   | `test_the_tag_reaching_real_github.py` | that the tag is on a real issue and not only in a payload; files one and closes it — it found the pull-request bug |
