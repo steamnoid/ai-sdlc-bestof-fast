@@ -44,6 +44,7 @@ class ImplementationPlan(BaseModel):
         """Every field's value, in the order the glossary lists them."""
         return (
             self.files_to_change,
+            self.files_to_add,
             self.tests_to_add,
             self.dependencies,
             self.migrations,
@@ -51,20 +52,28 @@ class ImplementationPlan(BaseModel):
 
     @model_validator(mode="after")
     def it_must_say_something_to_do(self) -> ImplementationPlan:
-        """At least one of the four lists must name something, or this is a fault.
+        """At least one of the five lists must name something, or this is a fault.
 
         "At least one" and not "all of them", because a plan that adds a dependency and
         changes no file is a plan — that is what `dependencies` is for — and a rule demanding
         every field would be satisfied only by a plan that guesses. What is refused is the
         plan with nothing in it, which is what a model returns when it did not do the
         reading, and which is indistinguishable from a real plan to a person approving it.
+
+        **All five, and it was four.** `files_to_add` was missing from this rule, from the list
+        it names in its own docstring, and from the refusal it raises — so a plan whose only
+        content was a file to add was refused as empty, while a plan whose only content was a
+        dependency was accepted. The reasoning that admits one admits the other: adding a file
+        without changing one is the ordinary case for a repository that does not yet have the
+        thing being added. Found by reading a plan a real run had produced and a real policy
+        had refused, which passed this rule through `files_to_change` and so did not reveal it.
         """
         if not any(self.everything_it_says()):
             raise EmptyPlanError(
-                "The planning agent returned a plan that names no file to change, no test "
-                "to add, no dependency and no migration. That is a fault rather than a "
-                "plan, because the next thing that happens to a plan is that a person is "
-                "asked to approve it, and a person cannot tell an empty plan from a real "
+                "The planning agent returned a plan that names no file to change, no file to "
+                "add, no test to add, no dependency and no migration. That is a fault rather "
+                "than a plan, because the next thing that happens to a plan is that a person "
+                "is asked to approve it, and a person cannot tell an empty plan from a real "
                 "one by looking at it."
             )
 
