@@ -142,9 +142,19 @@ def _the_suite_with_the_change_put_back(
 ) -> AnswerTheSuiteWithoutTheChange:
     """Put the change's own files back to what they were, run the suite, and put them again.
 
+    **In the clone, because `ACommand` without a working directory runs where the process
+    happens to be.** Nothing in this package changes the process's directory, so an undo that
+    names no clone is an undo of *this repository* — and a run started in `ai-sdlc-bestof-fast`
+    has been asking `npm test` about `ai-sdlc-bestof-fast` and reading the answer as a statement
+    about the delivery. Every other git caller names its working directory; this one did not.
+
     **Only the files the plan named, and never the tests.** The tests are what the question is
     about -- a suite with the tests taken away says nothing either way -- and a test the plan adds
-    did not exist before, so there is nothing to put back.
+    did not exist before, so there is nothing to put back. **Which files those are is asked of git
+    rather than worked out from the plan's lists.** `git checkout` resolves its whole pathspec
+    before it writes anything, so a single path the parent commit does not have aborts the
+    checkout and undoes *none* of the list -- and a model that puts a file it created in
+    `files_to_change` would otherwise take the undo down with it.
 
     **`HEAD~1`, and the change is put back afterwards however the run went.** The change is the
     most recent commit, so its parent holds the files as this repository had them -- the only
@@ -158,6 +168,9 @@ def _the_suite_with_the_change_put_back(
     a pass would be the worst kind of rule there is.
     """
     the_files_the_plan_changed = list(plan.files_to_change)
+    the_files_the_parent_commit_holds = _the_files_that_can_be_put_back(
+        clone, the_files_the_plan_changed
+    )
 
     def put_the_files_back_to(revision: str) -> None:
         if not the_files_the_plan_changed:
@@ -165,7 +178,8 @@ def _the_suite_with_the_change_put_back(
         the_outcome_of(
             ACommand(
                 program="git",
-                arguments=["checkout", revision, "--", *the_files_the_plan_changed],
+                arguments=["checkout", revision, "--", *the_files_the_parent_commit_holds],
+                working_directory=str(clone.path),
                 seconds_it_may_take=A_MINUTE,
             )
         )
@@ -178,3 +192,34 @@ def _the_suite_with_the_change_put_back(
             put_the_files_back_to("HEAD")
 
     return answering_without_the_change
+
+
+def _the_files_that_can_be_put_back(
+    clone: ClonedRepository, the_files_the_plan_changed: list[str]
+) -> list[str]:
+    """The paths `HEAD~1` holds, out of the ones the plan named, in the order the plan named them.
+
+    **`git ls-tree`, and not arithmetic on the plan's lists.** A plan has three file lists and a
+    model chooses between them; a plan that names a file it created in `files_to_change` has not
+    broken a rule so much as answered wrongly, and the undo cannot afford to be wrong with it --
+    there is no `git checkout` that removes a file, and naming one stops the checkout entirely.
+    **Git is asked which of the paths exist before the change, because that is the only answer
+    that cannot be got wrong by reading three lists.**
+
+    **An empty answer means nothing was put back, and that is the safe direction.** The change was
+    committed onto a clone of a repository that already had a commit, so `HEAD~1` exists; a run
+    where it does not has no "before" to answer about, and the rule downstream reads a green
+    suite with the change still in place and refuses a change it could not check.
+    """
+    if not the_files_the_plan_changed:
+        return []
+    what_the_parent_commit_holds = the_outcome_of(
+        ACommand(
+            program="git",
+            arguments=["ls-tree", "--name-only", "HEAD~1", "--", *the_files_the_plan_changed],
+            working_directory=str(clone.path),
+            seconds_it_may_take=A_MINUTE,
+        )
+    )
+    the_paths_git_named = set(what_the_parent_commit_holds.standard_output.split())
+    return [a_path for a_path in the_files_the_plan_changed if a_path in the_paths_git_named]

@@ -92,7 +92,13 @@ def test_an_undo_that_names_a_file_git_cannot_match_undoes_nothing(tmp_path: Pat
         "worth knowing rather than assuming, because it is the whole of `apply_the_plan`'s undo"
     )
 
-    _git(the_repository, "checkout", "HEAD~1", "--", str(the_file_the_change_edits.relative_to(the_repository)))
+    _git(
+        the_repository,
+        "checkout",
+        "HEAD~1",
+        "--",
+        str(the_file_the_change_edits.relative_to(the_repository)),
+    )
     assert "dev-secret-change-me" not in the_file_the_change_edits.read_text(encoding="utf-8"), (
         "the same file undoes cleanly on its own, so the first half is about the list and not "
         "about git being unable to undo an edit"
