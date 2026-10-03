@@ -41,6 +41,7 @@ carried no `--user` would be a claim with nothing behind it.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections.abc import Callable
@@ -70,17 +71,29 @@ CREDENTIALS_THAT_MUST_NOT_REACH_A_REPOSITORY = (
     "SSH_AUTH_SOCK",
 )
 
-# What this repository's own manifest says to run, as two argument vectors. A
-# verification step that ran its own idea of the command would report a green run of
-# something nobody asked for.
-THE_SUITE_THAT_THIS_REPOSITORY_DEFINES = ("npm", "test")
-
 # **How the runner is asked, rather than what it is asked.** The suite is `npm test` because that is
 # what this repository's package.json declares, and the listing is vitest's own mode rather than a
 # second npm script, because the runner knows its own configuration and npm does not. Written as a
 # pair because the pair is the claim: a repository whose suite is `pytest` has no such mode, and
 # `a_listing_command_for_a_toolchain` is where that question is asked and answered.
 THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS = ("npx", "vitest", "list", "--run")
+
+# **Two reporters, because the two readers need two different things and neither reporter has
+# both.** `default` is what a person reads at the verification gate *and* what
+# `_the_suite_says_it_ran_something` reads for a number; `json` is the only shape in which vitest
+# 1.6.1 writes the path of every file it opened. **The JSON does not replace the report, it carries
+# the file list the report has no room for** — so a suite run in JSON alone would be a worse suite,
+# and `--` is npm's own way of handing arguments to the script rather than to itself.
+#
+# **Read out of a repository rather than remembered**: `package.json` declares
+# `"test": "vitest run"`, so `npm test -- --reporter=json` reaches `vitest run --reporter=json`.
+THE_SUITE_THAT_THIS_REPOSITORY_DEFINES = (
+    "npm",
+    "test",
+    "--",
+    "--reporter=default",
+    "--reporter=json",
+)
 
 # **The same four answers for a Python repository, and read out of a real `pytest` rather than
 # remembered.** `--collect-only -q` prints one `path::test_name` per collected test, which is more
@@ -804,10 +817,17 @@ def the_test_files_the_suite_reported_running(what_the_suite_said: str) -> list[
     run that delivered #9 it would have answered "seven files" for a change whose two files were
     invisible to the runner.
 
-    **A skipped file counts as run**, because the suite says so: `↓ tests/integration/…` is
+    ****A skipped file counts as run**, because the suite says so: `↓ tests/integration/…` is
     vitest naming a file it collected and chose not to execute. A file the runner collected and
     skipped was not left out of the change's coverage, and treating it as unrun would make every
     suite with a skipped test look like one that dropped it.
+
+    **A suite that reports in JSON is read from the JSON, because that is where the paths are.**
+    vitest's own default reporter names no file at all, which is why this repository asked for a
+    separate listing command for years and why that command does not exist on the version this
+    repository pins. Its JSON reporter writes one entry per file it opened, with the path under
+    `name` — so the run that proved the suite green is itself a complete witness, and reading it
+    removes both the phantom listing and a container run per verification.
 
     **Three markers, and they were read out of a container rather than remembered.** I first wrote
     four and one of them (BALLOT X) appears nowhere in the output of a suite that actually failed,
@@ -816,11 +836,80 @@ def the_test_files_the_suite_reported_running(what_the_suite_said: str) -> list[
     the source is ASCII and nobody's editor has to guess what a lone mark means; a file a reader
     cannot see is a file a reader cannot check.
     """
-    the_files = _the_files_a_node_suite_named(what_the_suite_said)
+    the_files = _the_files_a_json_report_named(what_the_suite_said)
+    for a_path in _the_files_a_node_suite_named(what_the_suite_said):
+        if a_path not in the_files:
+            the_files.append(a_path)
     for a_path in _the_files_a_python_suite_named(what_the_suite_said):
         if a_path not in the_files:
             the_files.append(a_path)
     return the_files
+
+
+def _the_files_a_json_report_named(what_the_suite_said: str) -> list[str]:
+    """The files a JSON report named under `testResults[].name`, from vitest's own shape.
+
+    **vitest 1.6.1's JSON reporter, read out of its source rather than remembered:**
+
+    ```js
+    testResults.push({ assertionResults, startTime, endTime, status, message, name: file.filepath })
+    ```
+
+    **The JSON is looked for inside the output rather than parsed out of all of it.** A run
+    invoked through `npm test` has npm's own banner in front of it — `> package@1.0.0 test` and
+    `> vitest run` — so parsing the whole stream would fail on a report that is perfectly good, and
+    a parser that fails silently is how this reader came to answer nothing about a real run.
+
+    **A `name` is only a file when it is one.** The same array is the place a runner puts a test's
+    name in some shapes, so a value with no path in it is skipped rather than reported as a file
+    nobody can open.
+    """
+    the_files: list[str] = []
+    for a_path in _the_names_a_json_report_declared(what_the_suite_said):
+        if "/" not in a_path:
+            continue
+        if a_path not in the_files:
+            the_files.append(a_path)
+    return the_files
+
+
+def _the_names_a_json_report_declared(what_the_suite_said: str) -> list[str]:
+    """Every `testResults[].name` in whatever JSON the output carries, in the order written.
+
+    **Every JSON object in the output is looked at, not only the first.** npm's banner is not JSON
+    and a suite that printed a warning before its results would otherwise be unreadable, and the
+    shape that is being looked for is checked before anything is believed — a report that parses is
+    not a report that has a `testResults`.
+
+    **`raw_decode`, and the text is stepped over by exactly what it read.** That is what makes a
+    stream with a banner in front of it readable at all: `json.loads` raises on the banner and takes
+    the whole report with it, while `raw_decode` says how much of the stream was one value. **A
+    decoder that did not advance would loop for ever on the value it had just read**, which is what
+    the first version of this did and what the timeout caught.
+    """
+    the_names: list[str] = []
+    where = 0
+    while True:
+        a_brace = what_the_suite_said.find("{", where)
+        if a_brace < 0:
+            return the_names
+        try:
+            a_value, read = json.JSONDecoder().raw_decode(what_the_suite_said[a_brace:])
+        except ValueError:
+            where = a_brace + 1
+            continue
+        where = a_brace + read
+        if not isinstance(a_value, dict):
+            continue
+        the_entries = a_value.get("testResults")
+        if not isinstance(the_entries, list):
+            continue
+        for an_entry in the_entries:
+            if not isinstance(an_entry, dict):
+                continue
+            a_name = an_entry.get("name")
+            if isinstance(a_name, str) and a_name:
+                the_names.append(a_name)
 
 
 def _the_files_a_python_suite_named(what_the_suite_said: str) -> list[str]:
