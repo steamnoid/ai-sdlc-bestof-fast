@@ -1207,6 +1207,31 @@ Stated rather than left to be discovered.
   check would be an assertion on the plan rather than a line in a prompt — **§0.4 is explicit that a
   prompt asking for something is not a test that it was done** — and it is named here rather than
   guessed at, because the rule for it is a decision about what a plan is for.
+- **A policy refused a run on two findings, and one of them does not exist.** A run asked to fix
+  `expect.skip`, and the run was stopped at the **first** gate — the repository's own analysis —
+  over two defects it said the analysis had found:
+
+  > the placeholder-based test and matcher-less assertion cited in the report are concrete defects
+  > that should be addressed before continuation
+
+  **One is real and one is not.** `tests/integration/plane.int.test.ts:5` is
+  `expect(true).toBe(true)` — a tautology that passes whatever the code does, filed as
+  [#40](https://github.com/steamnoid/wellbeing-tracker-public/issues/40). The other, a
+  *matcher-less assertion* at `tests/unit/wellbeing-194-events.test.ts:54`, is
+  `expect(events.deleteEvent(user.id, event.id, db).status).toBe("deleted")` — **the matcher is on the
+  same line**, two words after the `expect(` the finding quotes.
+
+  **A refusal is a decision and this one was half invented**, which is the cost of a policy that
+  reads prose: it quoted a substring of a line and reported an absence in it. **The same run's other
+  refusals were right** — four in a row, each naming something my own request had left unspecified —
+  so the setting's judgement is good and this instance is a hallucination, and **nothing in the
+  record distinguishes them**. Both look the same from outside: one decision, no `Approval`, a reason
+  on the card.
+
+  **What is checkable is that a cited code location contains what was said about it**, and nothing
+  checks that today. A policy that named a path, a line and the exact text would make half of this
+  class of refusal impossible to act on by mistake — and would be checkable in `evals/`, where a
+  finding about a repository is judged, rather than in a prompt.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
