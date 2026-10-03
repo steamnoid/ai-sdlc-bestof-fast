@@ -1360,12 +1360,29 @@ Stated rather than left to be discovered.
   *a refused delivery and an unanswerable question look identical from outside*: one decision, no
   `Approval`, a reason on the card.
 
-  **And this is now the single thing between the pipeline and `DONE`**: a named regression test
-  cannot be witnessed as collected on a repository whose runner names no file, so the rule that
-  protects a change from being an unobserved one refuses every change that adds a test. **The answer
-  is not a better reporter — it is to stop asking.** Running the suite once per named test file makes
-  the question answerable by construction: *did the suite pass when it was asked about that file
-  alone* is a fact this system already controls, and it needs no listing command to exist.
+  **And this was the single thing between the pipeline and `DONE`**, so it is worth saying how it was
+  closed rather than only that it was: a named regression test cannot be witnessed as collected on a
+  repository whose runner names no file, so the rule that protects a change from being an unobserved
+  one refused every change that adds a test. **The answer was not a better reporter, and it was not
+  the one written here first — running the suite once per named test file.** The answer turned out to
+  be that **the question was never necessary**, because vitest's *default* reporter names no file
+  while its JSON reporter writes one entry per file it opened, with the path under `name`:
+
+  ```js
+  testResults.push({ assertionResults, startTime, endTime, status, message, name: file.filepath })
+  ```
+
+  **So the run that proved the suite green was already a complete witness of what it collected**, and
+  asking a second command for the same fact was both wrong *and* an extra container run per
+  verification. `npm test -- --reporter=default --reporter=json` now asks for both, because
+  **`default` is not being replaced** — it is what a person reads at the verification gate *and* what
+  the rule that makes an empty witness believable reads for a number. **A JSON-only suite would be a
+  worse suite**, which is the opposite of what "read the JSON" sounds like when you have not read
+  what else reads `output`.
+
+  **And `numTotalTests` had to become a third shape for how many tests ran**, because a suite
+  reporting only JSON would otherwise read as having run *nothing* — and then a 79-test run is
+  silence, and the check meant to catch an unrun test waves it through.
 
   **So the run is one seventh of the way to a delivery and the delivery was undeployable**, and the
   honest statement of what happened is not *the pipeline approved a bad change*. It is: **every
@@ -1487,6 +1504,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_plan_cannot_name_a_placeholder.py` | that a plan cannot name `<…>` as a file it will add — the only two lists in a plan that reach delivery unchecked against anything — and that a real filename with spaces, accents and parentheses is not a placeholder |
   | `test_the_suites_own_report_names_what_it_collected.py` | that a suite reporting in vitest's JSON names every file it opened, that the run that proved the suite green is therefore its own witness, that both reporters are still asked for, and that a report of dots still names nothing |
   | `test_a_runner_that_understands_nothing_says_nothing.py` | that a runner asked a question its own version has no command for reports nothing, rather than reporting a repository of 79 tests as one that collects none |
   | `test_an_undo_git_cannot_do_stops_it.py` | that real git — not the argument list — says a pathspec the parent commit does not have aborts the whole checkout, and the same file undoes cleanly on its own |
