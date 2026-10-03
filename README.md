@@ -1232,6 +1232,33 @@ Stated rather than left to be discovered.
   checks that today. A policy that named a path, a line and the exact text would make half of this
   class of refusal impossible to act on by mistake — and would be checkable in `evals/`, where a
   finding about a repository is judged, rather than in a prompt.
+- **A gate refused a run for a critical vulnerability nobody asked about, and the refusal was
+  entirely correct.** A run was asked to fix eight `expect.skip()` calls. It got through five gates
+  — discovery, requirements, QA, architecture — every one approved, and the sixth stopped it:
+
+  > The Dockerfile sets `NODE_ENV=production` but never `JWT_SECRET`, while `auth.js` and
+  > `middleware.ts` fall back to a hard-coded secret, so the shipped container would accept forged
+  > session cookies.
+
+  **Every part of that is true, and I checked all of it.** `web-app/src/lib/auth.js:13` and
+  `web-app/src/middleware.ts:7` are `process.env.JWT_SECRET || "dev-secret-change-me"`; `Dockerfile:38`
+  sets `NODE_ENV=production` and never sets `JWT_SECRET`; the literal has been in the tree since
+  `ee0d6cd`, the initial commit, of a **public** repository. `createSession` signs HS256 with it and
+  `verifySessionPayload` verifies with it, and the JWT's subject is the user id.
+
+  **So it was proven by minting a token, not by reading the code** — HS256 is `HMAC-SHA256`, so the
+  reproduction needs nothing from the repository: a forged cookie for an arbitrary `sub` verifies
+  against the published literal. Filed as [#41](https://github.com/steamnoid/wellbeing-tracker-public/issues/41).
+
+  **The gate did the thing it exists for.** The request was sound, the five artifacts before it were
+  sound, and the run still stopped — because the repository ships a secret that lets anyone
+  authenticate as anyone, and a change delivered into that is a change nobody can trust.
+
+  **This is the same setting that half-invented a finding two runs ago**, and **the pair is the
+  measurement**: a policy reading prose quotes a substring and reports an absence in it once, and
+  reports a complete, file-and-line-specific judgement once. **Its judgement is good enough that a
+  run it refused would have shipped a change into a forgeable-session repository**, which is a
+  better argument for the setting than a dataset of six agreements would be.
 - **The undo that judges a change was undoing a change in the wrong repository, and every run so
   far judged its third suite run on the answer.** This is the largest of the defects a run has
   found, and **no run found it** — I found it by reading the failure of a test I had just written
