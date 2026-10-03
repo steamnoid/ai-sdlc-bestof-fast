@@ -1395,6 +1395,24 @@ Stated rather than left to be discovered.
   absent, and this run **implemented** the answer to that question — and nothing downstream could see
   that the answer made the product unusable. **The gate that asked the right question got a
   satisfying answer, and a satisfying answer is not the same as a correct one.**
+- **The seventh gate has been passed, twice, and the eighth gate refused for something I got wrong.**
+  Two consecutive runs cleared `VerificationReport` — the gate that asks *did anything notice this
+  change* and had never once been cleared — and stopped at `PullRequestRequest` with a refusal that
+  is worth more than the approval would have been:
+
+  > it provides no evidence the hardcoded fallback was actually removed — no test showing startup or
+  > token verification fails when the secret is unset
+
+  **The test I asked for grepped the source for the literal, and a grep is not evidence about
+  behaviour** — it passes while the code still falls back somewhere nobody looked. I asked for that
+  shape twice. The replacement asserts what happens: unset the variable and the function raises; set
+  it and a token it signed verifies.
+
+  **So the last thing between this pipeline and `DONE` is a request, not a defect.** Every
+  deterministic part is in place and each one was a real blocker found by a real run: the undo runs
+  in the clone rather than wherever the process is (§the undo that judges a change), a plan cannot
+  name `<…>` as a file it will add, a title is bounded to what GitHub accepts, and the suite's own
+  report names the files it opened.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
