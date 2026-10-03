@@ -76,6 +76,41 @@ class DiscoveryReport(BaseModel):
         )
 
     @model_validator(mode="after")
+    def it_must_cite_a_file_it_read(self) -> DiscoveryReport:
+        """At least one file of this repository, or this is a report about something else.
+
+        **A real run was refused at its first gate for exactly this**: `evidence_files` came back
+        empty, `architecture_summary` blank, and the reason was that *"the suggested change is not
+        grounded in any inspected file"*. **Every check here had passed it** —
+        `_the_cited_files_that_are_in` proves each citation is a file of the clone and was shown to
+        the model, which it does of zero citations without complaint, and the rule below is
+        satisfied by nothing more than a list of languages.
+
+        **This is the third of one bug and the shape is identical each time.**
+        `expect(true).toBe(true)` passes whatever the code does; `<jwt-secret-guard-test>.test.ts`
+        passed every check about paths; an empty citation list passes every check about citations.
+        **All three are an empty value satisfying a rule written about its members** — a rule of the
+        form *every X must be Y*, which an empty list satisfies without doing anything.
+
+        **The field that cannot be empty is the one carrying what was read.** The rest may
+        legitimately be absent — a repository with no CI has nothing to say about CI, and a rule
+        demanding every field would only ever be satisfied by a report that guesses. **A report that
+        says what a repository is built with and never says what it read was produced from something
+        that is not the repository.**
+        """
+        if not self.evidence_files:
+            raise EmptyDiscoveryReportError(
+                f"{THE_DISCOVERY_AGENT} cited no file: `evidence_files` is empty, so nothing in "
+                "this report is grounded in anything anybody opened. Every check above is about "
+                "the citations themselves — each is a file of this repository and was shown to "
+                "you — and none of them can notice there were none.\n\n"
+                "Name at least one path you were shown and read, as a path inside the "
+                "repository. The reader of this report clicks those links, and a report whose "
+                "claims rest on nothing links to nothing."
+            )
+        return self
+
+    @model_validator(mode="after")
     def it_must_say_something_about_the_repository(self) -> DiscoveryReport:
         """At least one field must carry a value, or this is a fault and not a report.
 
@@ -83,6 +118,10 @@ class DiscoveryReport(BaseModel):
         nothing to say about CI and must be able to say so. Absence is representable,
         and a rule demanding every field would only ever be satisfied by a report that
         guesses.
+
+        **This is not the rule that caught the empty report, and it is kept because it catches a
+        different one.** A report that cites a file and says nothing else about the repository has
+        grounded itself in something and analysed nothing.
         """
         if not any(a_value_that_says_something(value) for value in self.everything_it_says()):
             raise EmptyDiscoveryReportError(

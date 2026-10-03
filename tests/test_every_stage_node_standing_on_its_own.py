@@ -317,7 +317,14 @@ def test_an_agent_that_reasons_leaves_a_note_a_person_reads(a_projects_root: Pat
     discover_the_repository_in_this_run(
         state,
         lambda clone, repository, requested: (
-            DiscoveryReport(languages=["Python"], architecture_summary="one module"),
+            # **A cited file, and the citation is the point.** A report that names no file of the
+            # repository is refused by the domain now — a real run was stopped at its first gate
+            # for exactly that — so this double builds an artifact the domain permits.
+            DiscoveryReport(
+                languages=["Python"],
+                architecture_summary="one module",
+                evidence_files=[EvidenceFile(path="health.py", link="local://an/owner/health.py")],
+            ),
             DiscoveryAnswer(languages=["Python"], judged=A_JUDGEMENT),
         ),
     )

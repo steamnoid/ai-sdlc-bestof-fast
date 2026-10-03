@@ -1395,6 +1395,31 @@ Stated rather than left to be discovered.
   absent, and this run **implemented** the answer to that question — and nothing downstream could see
   that the answer made the product unusable. **The gate that asked the right question got a
   satisfying answer, and a satisfying answer is not the same as a correct one.**
+- **A 400 about my own code turned out to be the gateway being inconsistent, and the way to know
+  that was to send the same request.** Six gates approved and then:
+
+  ```text
+  OpenAIInvalidRequestError: Error code: 400 - invalid_request_error
+  message: 'Upstream request failed: Thinking mode does not support this tool_choice'
+  ```
+
+  **The obvious reading is that the provider changed and that
+  `with_structured_output(tool_choice=…)` no longer works** — which would mean rewriting the one
+  mechanism every agent in this system depends on, and which exists precisely because the gateway
+  returns prose when a tool is only offered. So the same request went out directly, four ways:
+
+  | request | result |
+  |---|---|
+  | forced `tool_choice` | 200, answered with `DiscoveryAnswer` |
+  | tool offered, not forced | 200, `DiscoveryAnswer` |
+  | no tool at all | 200, prose |
+  | forced + `reasoning_effort: none` | 200, `DiscoveryAnswer` |
+
+  **The shape this system sends is valid, and the 400 was the gateway routing to a thinking-mode
+  backend on some calls and not on others.** **A provider's error message is a fact about the
+  provider, not a verdict on the code that reached it** — and believing it would have replaced the
+  mechanism that made structured output work at all, on the strength of one error whose own text
+  names a *mode* rather than a schema.
 - **A dropped socket ends a run at its most expensive point, and nothing in this system bounds
   that.** Six gates approved, a real clone, a real change written and committed — and then:
 
@@ -1546,6 +1571,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_report_that_cites_nothing_is_not_a_report.py` | that a discovery report naming no file is refused — the third instance of one bug, where an empty value satisfies a rule written about its members — and that a citation outside the repository is still refused too |
   | `test_a_title_github_will_accept.py` | that no title this system builds is one GitHub refuses — eight gates approved once and the delivery died on `title is too long (maximum is 256 characters)` against a 2472-character title — that a bound title ends at a word, and that a title that fits is the person's own words |
   | `test_a_plan_cannot_name_a_placeholder.py` | that a plan cannot name `<…>` as a file it will add — the only two lists in a plan that reach delivery unchecked against anything — and that a real filename with spaces, accents and parentheses is not a placeholder |
   | `test_the_suites_own_report_names_what_it_collected.py` | that a suite reporting in vitest's JSON names every file it opened, that the run that proved the suite green is therefore its own witness, that both reporters are still asked for, and that a report of dots still names nothing |
