@@ -1418,6 +1418,7 @@ Stated rather than left to be discovered.
   **What made it survivable was not a retry but the register.** The stage, the clone and the
   artifacts were all on disk, and a restarted run found its own state. **That is the property worth
   keeping and it is already here.**
+
 - **The seventh gate has been passed, twice, and the eighth gate refused for something I got wrong.**
   Two consecutive runs cleared `VerificationReport` — the gate that asks *did anything notice this
   change* and had never once been cleared — and stopped at `PullRequestRequest` with a refusal that
