@@ -1466,6 +1466,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_runner_that_understands_nothing_says_nothing.py` | that a runner asked a question its own version has no command for reports nothing, rather than reporting a repository of 79 tests as one that collects none |
   | `test_an_undo_git_cannot_do_stops_it.py` | that real git — not the argument list — says a pathspec the parent commit does not have aborts the whole checkout, and the same file undoes cleanly on its own |
   | `test_the_suite_without_the_change_runs_without_the_change.py` | that the undo runs in the clone rather than wherever the process happens to be, that the suite it answers for really is a suite without the change, and that a suite which cannot be run still leaves the change behind it |
   | `test_the_supervisor_may_ask_again.py` | that the supervisor asks a second time when the first answer could not be read, that the second question carries what was wrong, and that a supervisor that cannot rule at all ends on its own refusal rather than on the repeat ceiling |

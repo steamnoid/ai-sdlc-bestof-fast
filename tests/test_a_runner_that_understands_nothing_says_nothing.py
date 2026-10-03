@@ -20,8 +20,9 @@ Commands: run  related  watch  dev  bench  typecheck  [...]
 
 **There is no `list` command in vitest 1.6.1.** It was added in vitest 2.1. So `vitest list --run`
 is not a listing at all — it is `vitest` with the *filter* `list`, which matches no file, and vitest
-prints its `include` patterns and then reports honestly that it matched nothing. **The output says
-"no test files found" and the truth is "I was asked a question that does not exist in this runner."**
+prints its `include` patterns and then reports honestly that it matched nothing. **The output
+says "no test files found" and the truth is "I was asked a question this runner does not
+have".**
 
 **Both readings are the same four words and nothing in the record tells them apart.** One means a
 delivery's tests were never collected — a refusal, and correctly so. The other means this system
@@ -44,7 +45,7 @@ from aisdlc.tools.run_tests import (
 
 
 def _the_help_a_vitest_without_a_listing_command_prints() -> str:
-    """Exactly what `npx vitest list --help` printed on this repository's runner, kept verbatim.
+    """Exactly what `npx vitest list --help` printed here, kept verbatim.
 
     **The real output, not a paraphrase**, because the whole claim is that the word `list` does not
     appear among the commands. A paraphrase could tidy in a `list` line and the test would then be
@@ -69,38 +70,38 @@ Commands:
 def test_the_listing_asks_a_command_this_repository_runner_does_not_have() -> None:
     """The constant names `list`, and vitest 1.6.1 has no such command.
 
-    **Asserted as a fact about the constant and the runner's own help, not as a fact about
-    vitest.** If a future repository upgrades to a vitest that *does* have `list`, this test fails
-    and the fix is to delete it rather than to make it pass — which is the point. **A test that
-    would still pass on a repository whose listing works is measuring nothing**, and the run that
-    produced this finding was refused for four words of this constant's output.
+    **Asserted about the constant and the runner's own help, not about vitest.** A repository that
+    upgrades to a vitest with a real `list` fails this test, and the fix is to delete it rather
+    than make it pass. **A test that would still pass where the listing works measures nothing**,
+    and the run behind this finding was refused for four words of this constant's output.
     """
     assert "list" in THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS, (
-        "the listing no longer asks for a `list` command, so the finding this file records has been "
-        "acted on. **Delete this test when that happens** — a characterisation of a defect that has "
-        "been fixed is a claim the defect is still there"
+        "the listing no longer asks for a `list` command, so the finding this file records has "
+        "been acted on. **Delete this test when that happens** — a characterisation of a defect "
+        "that has been fixed is a claim the defect is still there"
     )
     assert THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS[:3] == ("npx", "vitest", "list"), (
-        f"the listing is now {THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS!r}, so whatever this test "
+        f"the listing is now {THE_LISTING_THAT_A_NODE_RUNNER_UNDERSTANDS!r}, so what this test "
         "says about `vitest list` is no longer about the command that runs"
     )
     the_commands_the_runner_offers = _the_help_a_vitest_without_a_listing_command_prints()
     assert "list [" not in the_commands_the_runner_offers and "\n  list\n" not in (
         the_commands_the_runner_offers
     ), (
-        "vitest 1.6.1's own help now offers a `list` command, which this file's transcript says it "
-        "does not. **That means this repository's vitest has moved**, and the refusal it caused has "
-        "to be re-run rather than assumed still to apply"
+        "vitest 1.6.1's own help now offers a `list` command, which this file's transcript "
+        "says it does not. **That means this repository's vitest has moved**, and the refusal it "
+        "caused has to be re-run rather than assumed still to apply"
     )
 
 
 def test_a_runner_that_understood_nothing_is_not_reported_as_a_repository_with_no_tests() -> None:
-    """Four words that mean two different things must not arrive as one answer.
+    """Four words meaning two different things must not arrive as one answer.
 
     **The two meanings.** A runner that ran a listing it understands and matched nothing means the
     repository collects no test files, and a delivery whose tests were never collected is not a
-    delivery. A runner that did not understand the command means this system asked a question its own
-    tool cannot answer, and the honest answer is silence rather than a fact about the repository.
+    delivery. A runner that did not understand the command means this system asked a question its
+    own tool cannot answer, and the honest answer is silence rather than a fact about the
+    repository.
 
     **Which one silence.** Because the caller cannot tell, silence is the only answer that cannot be
     a fabricated claim — and a rule that treats nothing printed as "no grounds to refuse" already

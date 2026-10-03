@@ -885,6 +885,23 @@ def the_runners_announcement_of(output: str, exit_code: int) -> str:
     **Nothing printed is `""`, which is how a rule stays quiet rather than refusing everything.**
     A container that failed to start has announced nothing, and a plan asked with an empty
     announcement is a plan this system has no grounds to refuse.
+
+    **A line saying no test files were found is dropped, because this listing never asks the
+    question that line answers.** `vitest list` was added in vitest 2.1 and this repository pins
+    **1.6.1**, whose own help offers `run`, `related`, `watch`, `dev`, `bench`, `typecheck` and
+    nothing else — so `vitest list --run` is `vitest` with the *filter* `list`, which matches no
+    file, and the four words are vitest reporting that it was asked something it does not have.
+    **Relaying them puts a false claim in a delivered report**: a repository of 79 tests, recorded
+    as one that collects none.
+
+    **Dropping it does not unblock anything, and this function is not what stands in the way.**
+    With nothing announced, `the_test_files_the_suite_reported_running` reads only the report —
+    and vitest 1.6.1 has no reporter that names a file, which is why the run this was written for
+    was refused on real evidence. **The refusal stands and the record stops lying about why.**
     """
     del exit_code
-    return output
+    return "\n".join(
+        a_line
+        for a_line in output.splitlines()
+        if not a_line.startswith("No test files found")
+    )
