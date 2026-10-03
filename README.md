@@ -1232,6 +1232,43 @@ Stated rather than left to be discovered.
   checks that today. A policy that named a path, a line and the exact text would make half of this
   class of refusal impossible to act on by mistake — and would be checkable in `evals/`, where a
   finding about a repository is judged, rather than in a prompt.
+- **The undo that judges a change was undoing a change in the wrong repository, and every run so
+  far judged its third suite run on the answer.** This is the largest of the defects a run has
+  found, and **no run found it** — I found it by reading the failure of a test I had just written
+  for a different defect.
+
+  **`_the_suite_with_the_change_put_back` hands `ACommand` no `working_directory`.** `the_outcome_of`
+  passes `cwd=None` to `subprocess.run`, and nothing in `src/` changes the process's directory, so:
+
+  ```text
+  git checkout HEAD~1 -- web-app/src/lib/auth.js
+  ```
+
+  ran in **`ai-sdlc-bestof-fast`** — this system's own repository — rather than in the clone under
+  `aisdlc-projects/`. **Every other git caller names its working directory**: three in
+  `a_commit_recording_the_change`, four in `github_clone_repository`. The undo was the only one
+  that did not, and it is the only one whose answer is read as evidence.
+
+  **So `refuse_a_change_nothing_observed`'s third leg has never measured the change it judges.** It
+  ran `npm test` on this repository and read the result as *did anything notice the change?* — and a
+  green run here says nothing at all about a delivery to another repository. **The rule was
+  refusing runs on the strength of a number about itself.**
+
+  **The fix is one argument, and it exposed a second defect that had been hiding behind it.**
+  `git checkout` resolves a whole pathspec before it writes anything, so **one path the parent
+  commit does not have aborts the checkout and undoes none of the list** — which is why the undo now
+  asks `git ls-tree` which of the plan's paths `HEAD~1` holds rather than working it out from the
+  plan's three lists. **A plan is allowed to be wrong about which list a file belongs in; the undo
+  cannot afford to be wrong with it.**
+
+  **I had this backwards first, and said so in public.** Reading `git checkout HEAD~1 --
+  <plan.files_to_change>` I concluded that a test the plan *added* would be taken with it, wrote
+  that down as "a fact about the mechanism", and merged it as #27. **Running git says the opposite,
+  and the reason I got it wrong is the reason the second test exists**: my first proof edited no
+  file at all, so `existing.test.ts` read `before` because it had never been anything else. **A
+  passing assertion I did not cause is not evidence.** That is the same mistake as the green `main`
+  earlier in the same day, and it is the second time inferring a repository's state from the absence
+  of a failure has cost something here.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
