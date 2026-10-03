@@ -1296,6 +1296,67 @@ Stated rather than left to be discovered.
   passing assertion I did not cause is not evidence.** That is the same mistake as the green `main`
   earlier in the same day, and it is the second time inferring a repository's state from the absence
   of a failure has cost something here.
+## What every run found
+
+- **Six gates approved a change that closed a critical vulnerability and broke sign-in, and the
+  reason it looked correct is that the test environment supplies the variable the deployment
+  lacks.** This is the most instructive thing a run has produced here, and it was not found by any
+  run — **I found it by checking the delivered diff**, after the run had stopped at the seventh gate
+  for a completely different and also-real reason.
+
+  **The change.** A run was asked to close
+  [#41](https://github.com/steamnoid/wellbeing-tracker-public/issues/41) — the hard-coded session
+  key. Six files, and the fix is **right**: `secret()` raises instead of falling back, and it is
+  hoisted out of `verifySessionPayload`'s `try`, so a missing key throws rather than quietly
+  returning `null`. The published literal is gone from a public repository's source. Nothing could
+  be better executed.
+
+  **And it produces an image nobody can log into.** The guard is
+
+  ```dockerfile
+  FROM node:22-bookworm AS build
+  ARG JWT_SECRET
+  RUN if [ -z "$JWT_SECRET" ]; then echo "ERROR: JWT_SECRET build argument is required" >&2; exit 1; fi
+
+  FROM node:22-bookworm-slim AS runtime        # ← no ARG, no ENV, no JWT_SECRET
+  ```
+
+  **A build-stage `ARG` does not carry into the runtime stage.** Measured, because the argument list
+  is not evidence and I have been wrong about this repository's mechanisms twice today:
+
+  ```text
+  $ docker build --build-arg JWT_SECRET=a-real-secret .
+  build stage saw it: [a-real-secret]
+  the runtime stage has JWT_SECRET=[]
+  ```
+
+  So `secret()` throws in the container, `web-app/src/app/api/auth/login/route.ts:15` calls
+  `createSession` → `secret()`, and **nobody can log in.** Filed as
+  [#42](https://github.com/steamnoid/wellbeing-tracker-public/issues/42).
+
+  **Why the suite agreed with all of it.** `vitest.config.ts` gained `test.env.JWT_SECRET`, so **the
+  tests supply the one thing the deployed image cannot.** 74 passing, product dead. **A test that
+  provides the variable under test cannot fail because the deployment lacks it** — and this
+  repository's integration test *builds* the image and never *runs* it, so nothing in it can reach a
+  request.
+
+  **And the gate that did stop the run stopped it for something else.** The verification gate
+  refused — correctly, on a real defect — because `what_it_collected` came back
+  `No test files found, exiting with code 1` while the suite claimed 74/79. That is the collector
+  gap this README has carried since Phase 4, and `run_tests.py:875` documents the vitest listing
+  being wrong for this repository. **The gate caught the evidence problem and missed the change.**
+
+  **So the run is one seventh of the way to a delivery and the delivery was undeployable**, and the
+  honest statement of what happened is not *the pipeline approved a bad change*. It is: **every
+  check in the chain verified the tests, and nothing verified the deployment.** A `Dockerfile` is a
+  change to a thing no test here exercises. Filed as the missing test in #42: build it, run it with
+  `JWT_SECRET` supplied, post to `/api/auth/login`.
+
+  **This is a different run from the eighth-gate one below**, and the difference is the interesting
+  part: that run stopped one gate earlier for *not recording* what happens when `JWT_SECRET` is
+  absent, and this run **implemented** the answer to that question — and nothing downstream could see
+  that the answer made the product unusable. **The gate that asked the right question got a
+  satisfying answer, and a satisfying answer is not the same as a correct one.**
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
