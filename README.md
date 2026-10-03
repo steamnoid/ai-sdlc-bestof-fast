@@ -1504,6 +1504,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_plan_cannot_name_a_placeholder.py` | that a plan cannot name `<…>` as a file it will add — the only two lists in a plan that reach delivery unchecked against anything — and that a real filename with spaces, accents and parentheses is not a placeholder |
   | `test_the_suites_own_report_names_what_it_collected.py` | that a suite reporting in vitest's JSON names every file it opened, that the run that proved the suite green is therefore its own witness, that both reporters are still asked for, and that a report of dots still names nothing |
   | `test_a_runner_that_understands_nothing_says_nothing.py` | that a runner asked a question its own version has no command for reports nothing, rather than reporting a repository of 79 tests as one that collects none |
   | `test_an_undo_git_cannot_do_stops_it.py` | that real git — not the argument list — says a pathspec the parent commit does not have aborts the whole checkout, and the same file undoes cleanly on its own |

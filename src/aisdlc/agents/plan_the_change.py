@@ -147,6 +147,37 @@ class PlannedFileToAddFoundError(Exception):
     """
 
 
+# **The characters prose uses to mark the place a value would go, and nothing else.** Declared here
+# rather than added to `A_CHARACTER_A_PATH_MAY_NOT_HOLD` because that constant is a claim about what
+# a filesystem accepts, and `<` and `>` are legal filename characters — a repository really can hold
+# `weird<name>.test.ts`. **A shared constant that lies about filesystems would make the filesystem
+# tools refuse a real path**, which is a worse defect than the one this prevents.
+A_CHARACTER_THAT_MARKS_A_PLACEHOLDER = frozenset("<>")
+
+class PlannedAPlaceholderIsNotAPathError(Exception):
+    """A plan named the *place* a path would go rather than a path, and every check passed it.
+
+    **A different rule from `A_CHARACTER_A_PATH_MAY_NOT_HOLD`, and it has to be.** That constant is
+    what a filesystem refuses, and `<` and `>` are legal filename characters on Linux and macOS — a
+    repository really can hold `weird<name>.test.ts`. **Putting them there would be a false claim
+    inside a constant the filesystem tools share**, and those tools would then refuse a real path.
+
+    **This one is about what a plan is allowed to say.** Angle brackets are what prose uses to mark
+    the place a value goes, and a plan that writes `<jwt-secret-guard-test>.test.ts` has written a
+    sentence where a path belongs. **Every other check in this module asks the clone something** —
+    does this file exist, is that directory there, does the runner collect it — and none of them can
+    notice that the string is not a path, because the directory is real and the file is not supposed
+    to exist yet.
+
+    **A real run wrote one, and the gate that found it should not have had to.** The run named its
+    own new regression test `tests/unit/<jwt-secret-guard-test>.test.ts`; five gates approved, the
+    planning gate refused, and the run lost an hour to a plan whose every path passed every check
+    this module makes. **The same shape as `expect(true).toBe(true)`** — a string shaped like a
+    value, carrying none — except this one goes into a file written to disk and into a commit
+    message, so everything downstream is a delivery about a file nobody can open.
+    """
+
+
 class PlannedFileNotFoundError(Exception):
     """The rule is in `plan_the_change`, and this is the only thing that may say it broke.
 
@@ -275,6 +306,7 @@ def plan_the_change(
         | PlannedFileToAddFoundError
         | PlannedTestDirectoryNotFoundError
         | PlannedTestDirectoryNotCollectedError
+        | PlannedAPlaceholderIsNotAPathError
         | ValidationError
         | AModelAnsweredInAShapeThisSystemCannotReadError
     )
@@ -315,6 +347,7 @@ def plan_the_change(
             PlannedFileToAddFoundError,
             PlannedTestDirectoryNotFoundError,
             PlannedTestDirectoryNotCollectedError,
+            PlannedAPlaceholderIsNotAPathError,
             ValidationError,
             AModelAnsweredInAShapeThisSystemCannotReadError,
         ) as refused:
@@ -396,6 +429,8 @@ def _every_file_to_change_is_in_the_clone(
     not exist — which is the same choice `evidence_for` makes, and for the same reason: a
     plan that is nine-tenths checkable reads to a person as fully checkable.
     """
+    _no_path_is_a_placeholder(plan)
+
     for path in plan.files_to_change:
         where = the_path_inside_the_project(a_path_in_the_project(clone.path, path))
 
@@ -433,6 +468,42 @@ def _every_file_to_change_is_in_the_clone(
                 "about the clone and can be checked, where whether some new directory is "
                 "wanted is an opinion nobody has approved."
             )
+
+
+def _no_path_is_a_placeholder(plan: ImplementationPlan) -> None:
+    """Neither of the two lists a plan brings files into may hold the *place* a path would go.
+
+    **`files_to_add` and `tests_to_add`, and both, because both are a promise about a file that does
+    not exist yet.** Existence is the check every other rule here leans on, and for these two lists
+    it proves nothing: a file the plan will create is not a file the clone can be asked about. So
+    these are the only two lists in a plan that reach delivery without ever having been checked
+    against anything, and a plan that names a placeholder in one delivers a file called
+    `<…>`.
+
+    **Two characters, and no real path in this repository's history has either.** Angle brackets are
+    prose marking the place a value goes. **The rule is the characters rather than how the string
+    looks**, because *looks like a path* is a judgement a model makes and this is a comparison: a
+    path may hold spaces, dashes, accents, parentheses and braces — `tests/**/*.{test,spec}.ts` is a
+    glob this very repository's runner uses — and a rule that refused those would refuse real files.
+    """
+    for a_list_of_files_the_plan_brings, its_field_name in (
+        (plan.files_to_add, "files_to_add"),
+        (plan.tests_to_add, "tests_to_add"),
+    ):
+        for a_path in a_list_of_files_the_plan_brings:
+            for a_placeholder_character in sorted(
+                A_CHARACTER_THAT_MARKS_A_PLACEHOLDER & set(a_path)
+            ):
+                raise PlannedAPlaceholderIsNotAPathError(
+                    f"{a_path!r} is in the plan's {its_field_name} and holds "
+                    f"{a_placeholder_character!r}. That is what prose uses to mark the place a "
+                    "value would go, and a plan that writes one has written a sentence where a "
+                    "path belongs.\n\n"
+                    "This string is not checked against the clone and cannot be: the file does not "
+                    "exist yet, which is the whole purpose of this list. So nothing else would "
+                    "have noticed — the directory is real, the runner would collect it, and the "
+                    "change would be delivered as a file with that name in it. Name the file."
+                )
 
 
 def _every_test_is_where_the_suite_will_look_for_it(
