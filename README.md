@@ -1395,6 +1395,31 @@ Stated rather than left to be discovered.
   absent, and this run **implemented** the answer to that question — and nothing downstream could see
   that the answer made the product unusable. **The gate that asked the right question got a
   satisfying answer, and a satisfying answer is not the same as a correct one.**
+- **A 400 about my own code turned out to be the gateway being inconsistent, and the way to know
+  that was to send the same request.** Six gates approved and then:
+
+  ```text
+  OpenAIInvalidRequestError: Error code: 400 - invalid_request_error
+  message: 'Upstream request failed: Thinking mode does not support this tool_choice'
+  ```
+
+  **The obvious reading is that the provider changed and that
+  `with_structured_output(tool_choice=…)` no longer works** — which would mean rewriting the one
+  mechanism every agent in this system depends on, and which exists precisely because the gateway
+  returns prose when a tool is only offered. So the same request went out directly, four ways:
+
+  | request | result |
+  |---|---|
+  | forced `tool_choice` | 200, answered with `DiscoveryAnswer` |
+  | tool offered, not forced | 200, `DiscoveryAnswer` |
+  | no tool at all | 200, prose |
+  | forced + `reasoning_effort: none` | 200, `DiscoveryAnswer` |
+
+  **The shape this system sends is valid, and the 400 was the gateway routing to a thinking-mode
+  backend on some calls and not on others.** **A provider's error message is a fact about the
+  provider, not a verdict on the code that reached it** — and believing it would have replaced the
+  mechanism that made structured output work at all, on the strength of one error whose own text
+  names a *mode* rather than a schema.
 - **A dropped socket ends a run at its most expensive point, and nothing in this system bounds
   that.** Six gates approved, a real clone, a real change written and committed — and then:
 
