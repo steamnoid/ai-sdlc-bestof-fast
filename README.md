@@ -1183,6 +1183,30 @@ Stated rather than left to be discovered.
   look at. **The gate compares a plan against the requirements, and a requirement that names a path
   is not yet something either artifact is obliged to contain.** Nothing here is a wrong value; it is
   a check that does not exist, and the run it let through is the run above.
+- **A test can only observe a change if the plan adds it rather than edits it, and nothing says
+  so anywhere a planner reads.** `apply_the_plan` undoes the change with
+  `git checkout HEAD~1 -- <plan.files_to_change>` and **only `files_to_change`** — a file the plan
+  *adds* is not in `HEAD~1`, so it survives the undo. That asymmetry is forced by git rather than
+  chosen: there is no `checkout` that removes a file, only `git rm`.
+
+  **So a regression test placed in `files_to_change` undoes itself.** The third suite run finds it
+  gone, the suite is green without the change, and the rule refuses — correctly, and for the wrong
+  reason. A real run wrote exactly such a test, and the supervisor's note was right and useless at
+  once: *"The approved plan still names only test files and no product file, so the new test cannot
+  fail when the change is undone."* **It cannot, because the undo took it.**
+
+  **This is not a defect in the rule and it is not a defect in the model.** It is a fact about the
+  mechanism that lives in two places and is written down in neither, and the person who needs it is
+  the planner — who chooses between `files_to_change` and `files_to_add` and has no way to learn
+  that the choice decides whether anything can observe the change at all. **A plan that adds a test
+  in `files_to_add` is delivered; the same plan with the file in `files_to_change` cannot be**, and
+  the difference is one list membership.
+
+  **What it would take to close this is a check and not a sentence**: a plan whose only files are
+  tests cannot both add and edit them, and the run has just shown what happens when it does. The
+  check would be an assertion on the plan rather than a line in a prompt — **§0.4 is explicit that a
+  prompt asking for something is not a test that it was done** — and it is named here rather than
+  guessed at, because the rule for it is a decision about what a plan is for.
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
