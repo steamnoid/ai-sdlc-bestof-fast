@@ -1346,6 +1346,27 @@ Stated rather than left to be discovered.
   gap this README has carried since Phase 4, and `run_tests.py:875` documents the vitest listing
   being wrong for this repository. **The gate caught the evidence problem and missed the change.**
 
+  **But the refusal's reason was half false, and it was this system's own four words.** The listing
+  is `npx vitest list --run`, and `vitest list` arrived in **vitest 2.1** while this repository pins
+  **1.6.1**, whose own help offers `run`, `related`, `watch`, `dev`, `bench`, `typecheck` and
+  nothing else. So the command is `vitest` with the *filter* `list`: it prints its `include`, matches
+  no file, and says "No test files found". **A repository of 79 tests was being recorded as one that
+  collects none**, in an artifact delivered to a person. Fixed — the line is dropped.
+
+  **Fixing it does not unblock the gate, which is the part worth stating plainly.** With nothing
+  announced, the check reads only the report, and **vitest 1.6.1 has no reporter that names a
+  file**: `relative(process.cwd` appears nowhere in `vitest/dist`. **So the refusal stands on real
+  evidence and the record stops lying about why** — which is exactly what was worth having, because
+  *a refused delivery and an unanswerable question look identical from outside*: one decision, no
+  `Approval`, a reason on the card.
+
+  **And this is now the single thing between the pipeline and `DONE`**: a named regression test
+  cannot be witnessed as collected on a repository whose runner names no file, so the rule that
+  protects a change from being an unobserved one refuses every change that adds a test. **The answer
+  is not a better reporter — it is to stop asking.** Running the suite once per named test file makes
+  the question answerable by construction: *did the suite pass when it was asked about that file
+  alone* is a fact this system already controls, and it needs no listing command to exist.
+
   **So the run is one seventh of the way to a delivery and the delivery was undeployable**, and the
   honest statement of what happened is not *the pipeline approved a bad change*. It is: **every
   check in the chain verified the tests, and nothing verified the deployment.** A `Dockerfile` is a
