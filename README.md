@@ -1395,6 +1395,26 @@ Stated rather than left to be discovered.
   absent, and this run **implemented** the answer to that question — and nothing downstream could see
   that the answer made the product unusable. **The gate that asked the right question got a
   satisfying answer, and a satisfying answer is not the same as a correct one.**
+- **Three defects in this repository have been the same defect, and naming that is worth more than
+  fixing the third one.** A real run was refused at its first gate because a `DiscoveryReport` came
+  back with an empty `evidence_files` list — *"the suggested change is not grounded in any inspected
+  file"* — and **every check about a discovery report had passed it**:
+
+  | | |
+  |---|---|
+  | `expect(true).toBe(true)` | a tautology passing whatever the code does — [#40](https://github.com/steamnoid/wellbeing-tracker-public/issues/40) |
+  | `<jwt-secret-guard-test>.test.ts` | a plan naming the place a path would go, passing every check made about paths |
+  | `evidence_files: []` | a report citing nothing, passing every check made about citations |
+
+  **All three are an empty value satisfying a rule written about its members.** Every check was real
+  and none was wrong; each was written in the form *every X must be Y*, **which an empty list
+  satisfies without doing anything.** `_the_cited_files_that_are_in` proves each citation is a file
+  of the clone and was shown to the model — and it proves that of zero citations without complaint.
+
+  **None of the three was found by a model failing. All three were found by a person, or a gate,
+  reading a value that had passed** — which is a class of defect no amount of testing the model's
+  reasoning would have surfaced, and the reason the pattern is worth naming: **a rule written as
+  *every* one of something has to be checked against the empty one.**
 - **A 400 about my own code turned out to be the gateway being inconsistent, and the way to know
   that was to send the same request.** Six gates approved and then:
 
