@@ -1346,6 +1346,27 @@ Stated rather than left to be discovered.
   gap this README has carried since Phase 4, and `run_tests.py:875` documents the vitest listing
   being wrong for this repository. **The gate caught the evidence problem and missed the change.**
 
+  **But the refusal's reason was half false, and it was this system's own four words.** The listing
+  is `npx vitest list --run`, and `vitest list` arrived in **vitest 2.1** while this repository pins
+  **1.6.1**, whose own help offers `run`, `related`, `watch`, `dev`, `bench`, `typecheck` and
+  nothing else. So the command is `vitest` with the *filter* `list`: it prints its `include`, matches
+  no file, and says "No test files found". **A repository of 79 tests was being recorded as one that
+  collects none**, in an artifact delivered to a person. Fixed — the line is dropped.
+
+  **Fixing it does not unblock the gate, which is the part worth stating plainly.** With nothing
+  announced, the check reads only the report, and **vitest 1.6.1 has no reporter that names a
+  file**: `relative(process.cwd` appears nowhere in `vitest/dist`. **So the refusal stands on real
+  evidence and the record stops lying about why** — which is exactly what was worth having, because
+  *a refused delivery and an unanswerable question look identical from outside*: one decision, no
+  `Approval`, a reason on the card.
+
+  **And this is now the single thing between the pipeline and `DONE`**: a named regression test
+  cannot be witnessed as collected on a repository whose runner names no file, so the rule that
+  protects a change from being an unobserved one refuses every change that adds a test. **The answer
+  is not a better reporter — it is to stop asking.** Running the suite once per named test file makes
+  the question answerable by construction: *did the suite pass when it was asked about that file
+  alone* is a fact this system already controls, and it needs no listing command to exist.
+
   **So the run is one seventh of the way to a delivery and the delivery was undeployable**, and the
   honest statement of what happened is not *the pipeline approved a bad change*. It is: **every
   check in the chain verified the tests, and nothing verified the deployment.** A `Dockerfile` is a
@@ -1466,6 +1487,7 @@ Stated rather than left to be discovered.
   | `test_a_repository_briefing_itself.py` | a repository briefs itself, and filing is refused without a credential |
   | `test_the_tag_this_system_leaves_on_what_it_writes.py` | every issue and pull request carries the project's full name, or still goes out untagged |
   | `test_whether_anything_observed_the_change.py` | the rule that catches a change nothing observed, and its one gap |
+  | `test_a_runner_that_understands_nothing_says_nothing.py` | that a runner asked a question its own version has no command for reports nothing, rather than reporting a repository of 79 tests as one that collects none |
   | `test_an_undo_git_cannot_do_stops_it.py` | that real git — not the argument list — says a pathspec the parent commit does not have aborts the whole checkout, and the same file undoes cleanly on its own |
   | `test_the_suite_without_the_change_runs_without_the_change.py` | that the undo runs in the clone rather than wherever the process happens to be, that the suite it answers for really is a suite without the change, and that a suite which cannot be run still leaves the change behind it |
   | `test_the_supervisor_may_ask_again.py` | that the supervisor asks a second time when the first answer could not be read, that the second question carries what was wrong, and that a supervisor that cannot rule at all ends on its own refusal rather than on the repeat ceiling |
