@@ -71,13 +71,28 @@ def test_a_repository_declaring_package_json_is_still_run_with_npm(tmp_path: Pat
 
     The real runs this repository inherited were all node, and `node:22-bookworm` with `npm ci`
     and `npm test` is what kept them working.
+
+    **This asserts the claim and not the literal, and the literal was a proxy for it.** The line
+    read `suite_command == ("npm", "test")`, which pinned two things: that npm runs the suite, and
+    that nothing else is ever added to it. **The second was never the claim** — the claim is that
+    the node path still works — and it became wrong when the suite began being asked for the JSON
+    report that names the files it opened, which is the fix for the seventh gate.
+
+    **Nothing is lost by stating the claim instead.** `test_the_suites_own_report_names_what_it_
+    collected.py` asserts that `--reporter=json` and `--reporter=default` are both requested, so the
+    flags this line stopped pinning are pinned where the reason they exist is written down.
     """
     the_checkout = _a_checkout('package.json::{"name": "a-project"}', tmp_path=tmp_path)
 
     how_it_is_tested = how_this_repository_is_tested(the_checkout)
 
     assert how_it_is_tested.toolchain_image == "node:22-bookworm"
-    assert how_it_is_tested.suite_command == ("npm", "test")
+    assert how_it_is_tested.suite_command[:2] == ("npm", "test"), (
+        f"the suite is run as {how_it_is_tested.suite_command!r}, so a repository that declares "
+        "`package.json` is no longer run with npm — and this suite exists to prove that adding a "
+        "Python toolchain did not break the node path that every real run before it depended on"
+    )
+    assert "pytest" not in how_it_is_tested.suite_command
 
 
 def test_the_six_answers_come_back_together_and_are_one_fact(tmp_path: Path) -> None:

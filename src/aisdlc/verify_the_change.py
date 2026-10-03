@@ -199,6 +199,7 @@ NO_WITNESS_COULD_NAME_THIS_FILE = "this runner named no file, so nothing can say
 HOW_MANY_TESTS_A_RUNNER_SAYS = re.compile(
     r"(\d+)\s+tests?\b"     # pytest: 68 tests collected
     r"|\btests?\s*[:#]?\s*(\d+)"  # spec/tap/vitest: tests 1, # tests 1, Tests  1
+    r"|\"numTotalTests\":\s*(\d+)"  # vitest's JSON: "numTotalTests": 79
 )
 
 
@@ -262,10 +263,19 @@ def _the_suite_says_it_ran_something(what_the_suite_said: str) -> bool:
     and the only honest reading of that is that the question cannot be answered here.
     """
     for a_line in what_the_suite_said.splitlines():
-        for the_number_before, the_number_after in HOW_MANY_TESTS_A_RUNNER_SAYS.findall(a_line):
-            the_count = the_number_before or the_number_after
-            if the_count and int(the_count) > 0:
-                return True
+        for the_numbers_a_runner_states in HOW_MANY_TESTS_A_RUNNER_SAYS.findall(a_line):
+            # **Three shapes now, and only one of them matches at a time** — a prose line with the
+            # number after the word, one with it before, and a JSON key. Naming the three rather
+            # than filtering the tuple is the difference between a reader whose three rules can be
+            # read and one that has to be taken on trust.
+            (
+                the_number_before,
+                the_number_after,
+                the_number_in_a_json_key,
+            ) = the_numbers_a_runner_states
+            for the_count in (the_number_before, the_number_after, the_number_in_a_json_key):
+                if the_count and int(the_count) > 0:
+                    return True
     return False
 
 
