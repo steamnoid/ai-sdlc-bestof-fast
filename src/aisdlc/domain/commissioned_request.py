@@ -60,7 +60,7 @@ class CommissionedRequest(BaseModel):
         """
         if not title.strip():
             raise ValueError("a commissioned request must say what was asked for")
-        return title
+        return _a_title_a_reader_and_a_platform_can_both_hold(title)
 
     def where_it_can_be_read(self) -> str | None:
         """The address this request can be read at, or `None` for a request out of a sentence.
@@ -73,6 +73,57 @@ class CommissionedRequest(BaseModel):
         if self.filed_as is None:
             return None
         return self.filed_as.address
+
+
+# **GitHub's own number, and it is here rather than in the delivery because three producers write
+# this field and only one of them is a delivery.** A run's first sentence, a briefing's filing, and
+# a model's proposal all become `title`, and all three end up as an issue title, a branch name and a
+# pull request title. **A bound in the delivery would leave the other two unbounded**, which is the
+# same mistake as a rule that only the caller enforces.
+THE_LONGEST_TITLE_GITHUB_ACCEPTS = 256
+
+
+def _a_title_a_reader_and_a_platform_can_both_hold(title: str) -> str:
+    """The title, cut to what GitHub accepts and cut where a person would have cut it.
+
+    **A real run built a title of 2472 characters and discovered it at the last node.**
+    `PullRequestNotOpenedError` said `Validation Failed; title is too long (maximum is 256
+    characters)` — after eight gates approved, three container suite runs and a policy ruling on
+    every artifact. **The same string was the branch name too**, so its length was on screen for
+    six stages and only the platform noticed it at the end, which is the worst place and the only
+    one anybody was checking.
+
+    **Cut and not refused.** A person who explains themselves at length has said something worth
+    reading, and this field appears in a list of forty. **Refusing the run over it would be a
+    punishment for good manners** — and `a_request_about` puts the whole argument in `title` and
+    leaves `body` empty, so a long request becomes a long title with nothing behind it.
+
+    **Nothing is *kept* elsewhere: the text that did not fit is dropped, and that is the honest
+    cost of this rule.**
+    and it is the price of a run that delivers at all rather than a run that refuses over a title.
+    The alternative — refusing — throws away eight gates of work instead, which is worse and would
+    have been thrown away by a person whose sentence was merely thorough.
+
+    **Cut at the last space before the bound, and not at the bound itself**, because a title is
+    filled from the front and the tail is what is lost. **Ending mid-word would read as a defect**,
+    and a title is now permanent in a public repository.
+    """
+    if len(title) <= THE_LONGEST_TITLE_GITHUB_ACCEPTS:
+        return title
+
+    the_room_left = THE_LONGEST_TITLE_GITHUB_ACCEPTS
+    the_last_space_before_it = title.rfind(" ", 0, the_room_left)
+    if the_last_space_before_it < 1:
+        # **One word longer than the bound, and there is no space to cut at.** A title of a single
+        # 300-character token is a name rather than a sentence, and cutting inside it would produce
+        # a name that matches no file and no issue. Refusing the uncuttable case is better than
+        # inventing a word.
+        raise ValueError(
+            f"the request's first {the_room_left} characters are one word with no space "
+            "in it, so "
+            "it cannot be shortened to a title. A title is for reading in a list; this is a name."
+        )
+    return title[:the_last_space_before_it].rstrip()
 
 
 def a_request_about(title: str, body: str = "") -> CommissionedRequest:
