@@ -1395,6 +1395,30 @@ Stated rather than left to be discovered.
   absent, and this run **implemented** the answer to that question — and nothing downstream could see
   that the answer made the product unusable. **The gate that asked the right question got a
   satisfying answer, and a satisfying answer is not the same as a correct one.**
+- **A dropped socket ends a run at its most expensive point, and nothing in this system bounds
+  that.** Six gates approved, a real clone, a real change written and committed — and then:
+
+  ```text
+  OpenAIConnectionError: Connection error.
+  [NOTE] During task with name 'make_and_verify_the_change'
+  ```
+
+  Roughly forty minutes, three container suite runs and six policy rulings gone to a transport
+  failure. **The interesting part is that every budget in this system is about the wrong thing.**
+  `AISDLC_CORRECTION_BUDGET` counts corrections for a model that *answered* something unreadable or
+  unusable; `AISDLC_REPEAT_BUDGET` bounds a supervisor's second opinion. **A connection error is not a
+  wrong answer — it is the absence of one**, so it falls outside both, reaches the operator as a
+  traceback, and the only recovery is to type the sentence again.
+
+  **And the fix is not `retry` on a node.** The implementer writes files, commits, then runs two
+  suites; a blind retry after a partial write is a worse state than a stopped run. **The retry
+  belongs on the model call and nowhere else**, because a call that never received a response has
+  certainly not been half-applied — which is the one thing a node boundary cannot promise.
+
+  **What made it survivable was not a retry but the register.** The stage, the clone and the
+  artifacts were all on disk, and a restarted run found its own state. **That is the property worth
+  keeping and it is already here.**
+
 - **The seventh gate has been passed, twice, and the eighth gate refused for something I got wrong.**
   Two consecutive runs cleared `VerificationReport` — the gate that asks *did anything notice this
   change* and had never once been cleared — and stopped at `PullRequestRequest` with a refusal that
