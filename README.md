@@ -1415,6 +1415,29 @@ Stated rather than left to be discovered.
   reading a value that had passed** — which is a class of defect no amount of testing the model's
   reasoning would have surfaced, and the reason the pattern is worth naming: **a rule written as
   *every* one of something has to be checked against the empty one.**
+- **The gateway failed twice at the same node, and sending the same request is what proved the code
+  was innocent both times.** Two separate deaths in `make_and_verify_the_change`, after six approved
+  gates each time:
+
+  ```text
+  OpenAIInvalidRequestError: 400 — 'Thinking mode does not support this tool_choice'
+  OutputParserException: Unknown tool type: 'TOOL_NAME'.
+    Available tools: WhatTheImplementerConcluded
+  ```
+
+  **The second is the one worth reading.** `TOOL_NAME` is not a string this system sends: the error
+  says the one tool *was* named correctly, and there is no `bind_tools` and no unnamed tool anywhere
+  in `src/`. **The model called a name that was in its request and not in ours** — so the gateway
+  sent a schema this package never wrote.
+
+  **So the same call went out directly**, three times, and came back clean three for three — each
+  with a file and a note. **The call shape is valid and the provider is flaky.** And that mattered:
+  **twice in one day the evidence pointed at `with_structured_output(tool_choice=…)`, the one
+  mechanism every agent here depends on**, which exists precisely because this gateway returns prose
+  when a tool is only offered. Believing either message would have replaced it.
+
+  **Why the implementer and not the other six:** it is the largest call in the pipeline — a whole
+  file's content and a judgement in one answer — so it is the one most likely to reach an edge.
 - **A 400 about my own code turned out to be the gateway being inconsistent, and the way to know
   that was to send the same request.** Six gates approved and then:
 
