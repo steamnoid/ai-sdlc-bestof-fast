@@ -98,6 +98,18 @@ class APolicyAnsweredWithSomethingUnusableError(Exception):
         )
 
 
+# **One word, and only one, because one word is what a run has actually produced.** A grounds field
+# that announces itself as unfinished is not grounds — and `"Placeholder pending policy retrieval"`
+# is the sentence a real policy answered with, which is the whole of what one gate said. `TODO` and
+# `TBD` belong to the same class; **they are added when a run produces them, and not before.**
+#
+# **Lower case, and compared against the reason lowered**, so the check cannot be defeated by a
+# capital letter — and the word is matched inside the sentence rather than as the sentence, because
+# a real ground may describe a placeholder value being replaced and refusing that would stop the
+# policy explaining itself.
+ANY_WORD_THAT_ANNOUNCES_UNFINISHED_BUSINESS = "placeholder"
+
+
 class WhatAPolicyJudged(BaseModel):
     """The RED shell: grounds, not a verdict. The rules come with the implementation.
 
@@ -119,12 +131,42 @@ class WhatAPolicyJudged(BaseModel):
         would sail through this shape, be caught one step later by `ApprovalDecision`, and the
         run would raise a `ValidationError` from a constructor instead of asking the model
         again. The two refusals guard different boundaries and both have to hold.
+
+        **And the second half of the same rule is a sentence calling itself a placeholder, because
+        that is what a real policy answered with.**
+
+        ```text
+        Placeholder pending policy retrieval
+        ```
+
+        That is not blank, so `if not reason.strip()` waves it through — **and it is the whole of
+        what the gate said**, at the one field a person reads. `reason` exists because an
+        `approved: bool` with no grounds is a coin flip written down, and a placeholder ground
+        defeats that more completely than a blank one: **a blank one is visibly missing and this
+        one reads as an answer.**
+
+        **One word, and one word only, because one word is what has been seen.** `TODO` and `TBD`
+        belong to the same class and this repository does not guess: **a word joins this check
+        when a run has produced it.** And the check is about the reason *calling itself* a
+        placeholder, not about the word appearing — a real ground may well describe a placeholder
+        value being replaced, and a rule that refused that would stop the policy explaining itself.
         """
         if not reason.strip():
             raise ValueError(
                 "a policy that rules without saying why has not ruled, and a record that cannot "
                 "be questioned is not a decision"
             )
+
+        if ANY_WORD_THAT_ANNOUNCES_UNFINISHED_BUSINESS in reason.lower():
+            raise ValueError(
+                f"{reason!r} calls itself a placeholder, so it is not grounds. **A policy that "
+                "says it will say why later has not said why**, and the correction loop will "
+                "spend its next turn on that.\n\n"
+                "Say what made you refuse and what would change it: name the artifact, the claim "
+                "you doubt, and what evidence would settle it. 'Placeholder pending policy "
+                "retrieval' reads as an answer and is actionable by nobody."
+            )
+
         return reason
 
 
