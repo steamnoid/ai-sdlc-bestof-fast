@@ -1505,6 +1505,42 @@ Stated rather than left to be discovered.
   in the clone rather than wherever the process is (§the undo that judges a change), a plan cannot
   name `<…>` as a file it will add, a title is bounded to what GitHub accepts, and the suite's own
   report names the files it opened.
+- **A run delivered a real pull request, and the image it produced was verified by building it.**
+  [`steamnoid/wellbeing-tracker-public#43`](https://github.com/steamnoid/wellbeing-tracker-public/pull/43),
+  *"Remove the hardcoded session-secret fallback"*. Six files, +70/−5, `MERGEABLE`, **the fork's own
+  `suite` check green**, and all eight gates approved by the policy.
+
+  **And the defect the previous delivery had is fixed**, which is why this is one finding and not
+  two. That delivery closed the hard-coded key and shipped an image that could not log anyone in,
+  because the `ARG` sat in the build stage only. This one:
+
+  ```dockerfile
+  FROM node:22-bookworm-slim AS runtime
+  +ARG JWT_SECRET
+  +ENV JWT_SECRET=$JWT_SECRET
+  ```
+
+  **Verified by running Docker rather than by reading the diff**, which is the whole difference:
+
+  | | |
+  |---|---|
+  | built **with** `--build-arg JWT_SECRET=…` | the container prints the secret |
+  | built **without** it | `ERROR: JWT_SECRET build argument is required`, exit 1 |
+  | `docker run -e JWT_SECRET=$(openssl rand -hex 32)` | works, and is the better practice |
+
+  So [#42](https://github.com/steamnoid/wellbeing-tracker-public/issues/42) is closed: the previous
+  delivery could not log anyone in and this one can. **BuildKit's own warning is the thing to carry
+  forward** — `SecretsUsedInArgOrEnv: do not use ARG or ENV for sensitive data` — because this bakes
+  the secret into a layer anybody who can pull the image can read, and the `-e` form is the answer.
+
+  **What it took, in order, and every item is a real blocker a real run found:** the undo ran in the
+  wrong repository; a plan could name `<…>` as a file; a 2472-character title made an unopenable pull
+  request; `vitest list` does not exist in 1.6.1 while its JSON reporter always did; a report could
+  cite nothing; and a policy's grounds could be the words *"Placeholder pending policy retrieval"*.
+
+  **Still not `DONE`**: the stage is `AWAITING_HUMAN_APPROVAL` after the delivery gate, because the
+  merge node has never executed. **A real pull request is the milestone; the merge is one node past
+  it.**
 - **A run has not reached `DONE` on a real repository, and one got to the eighth gate.** Every claim
   above about the merge, the conflict and the rebase is proven against a transport that answers, not
   against GitHub. What has been proven on a real model against a real clone is: **eight gates
