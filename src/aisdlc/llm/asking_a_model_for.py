@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
+from langchain_core.exceptions import ModelError, OutputParserException
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.runnables import Runnable, RunnableLambda
 from pydantic import BaseModel
@@ -118,6 +119,47 @@ def ask_a_model_for[Artifact: BaseModel](
     )
 
 
+class AProviderWouldNotAnswerError(AModelAnsweredInAShapeThisSystemCannotReadError):
+    """The provider would not answer at all, rather than answering something unreadable.
+
+    **Three runs in a row died at `make_and_verify_the_change` and two of them were this**, with
+    the provider's own words:
+
+    ```text
+    OpenAIInvalidRequestError: 400 — 'Thinking mode does not support this tool_choice'
+    OpenAIConnectionError: Connection error.
+    OutputParserException: Unknown tool type: 'TOOL_NAME'.
+    ```
+
+    **The request shape is valid** — sent directly, the same call came back clean, three for three.
+    So these are not a defect in what this system sends and no rewrite of it would fix them; they
+    are a gateway that refuses or drops a fraction of the calls it accepts. **The run treated every
+    one as the end of the run**, which is the wrong place to end one: the correction loop exists
+    for a model that could not be read and is bounded precisely so that asking again is cheap, and
+    **a provider that says no deserves the same second turn as a model that said something
+    unreadable.**
+
+    **A subclass rather than a new name in nine correction loops.** The two are the same fact to a
+    caller — *there is no artifact here* — and the difference is only what a person reading the
+    card after it is told. **Subclassing means nine loops need no edit and one name says both**, and
+    the message says which kind this was.
+
+    **An `__init__` of its own, because the base one takes two arguments** — the reader's
+    exception and the artifact — and this refusal is handed one message. **A subclass inheriting a
+    two-argument constructor and raised with one fails inside its own construction**, which is
+    worse than the failure it was added for: the traceback names a `TypeError` about `__init__`
+    rather than the provider's refusal.
+    """
+
+    def __init__(
+        self, what_the_provider_said: BaseException, the_artifact: type[BaseModel]
+    ) -> None:
+        """Say which artifact was asked for, and what the provider said while refusing."""
+        super().__init__(what_the_provider_said, the_artifact)
+        self.what_the_provider_said = what_the_provider_said
+        self.the_artifact = the_artifact
+
+
 def _the_answer_read_or_the_refusal_raised[Artifact: BaseModel](
     the_forced_asking: Runnable[LanguageModelInput, AnAnswerIsNotYetAnArtifact],
     the_question: LanguageModelInput,
@@ -135,3 +177,21 @@ def _the_answer_read_or_the_refusal_raised[Artifact: BaseModel](
         raise AModelAnsweredInAShapeThisSystemCannotReadError(
             the_reader_hit, the_artifact
         ) from the_reader_hit
+    except (ModelError, OutputParserException) as the_provider_refused:
+        # **Two names, and neither of them is `Exception`.** The catch above is a `KeyError` alone
+        # on purpose, and its docstring gives the reason: a broader catch would convert a bug in a
+        # caller's own code into "the model misbehaved", which would send a model to fix something
+        # that was never wrong and spend the budget doing it. **These two are the provider's own
+        # classes** — checked against the installed versions rather than remembered, and neither is
+        # a subclass of `Exception`-but-one:
+        #
+        # | what arrives | what it is |
+        # |---|---|
+        # | `ModelError` | the request was refused, or no answer arrived |
+        # | `OutputParserException` | an answer named a tool this system never declared |
+        #
+        # **A `TypeError` in this package still reaches the operator as itself**, which is the whole
+        # of what the narrow catch is for.
+        raise AProviderWouldNotAnswerError(
+            the_provider_refused, the_artifact
+        ) from the_provider_refused
