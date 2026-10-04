@@ -42,6 +42,28 @@ from aisdlc.tools.github_client import THE_SETTING_NAMING_THE_CREDENTIAL
 from aisdlc.tools.github_create_pull_request import what_github_said
 
 WHERE_GITHUB_KEEPS_THE_PULL_REQUEST = "/repos/{owner}/{name}/pulls/{number}"
+
+# **`/merge`, and the segment is the whole finding.** GitHub keeps *two* addresses under
+# `/pulls/{number}`: one that reads and updates the pull request, and one that merges it. A `PUT`
+# carrying `{"sha": …}` to the first is a real request to a real address, and GitHub answers it
+# `404 Not Found` — so nothing about it looks wrong until the run that has spent eight gates and
+# forty minutes finds out.
+#
+# **A run delivered a pull request and could not merge it**, with every other fact correct: the
+# token carried `repo`, the pull request read `200`, `mergeable` was `true`, and the commit the
+# suite went green on was in hand. Reproduced by hand against that same pull request, with that
+# same token:
+#
+# ```text
+# $ curl -X PUT .../pulls/43 -d '{"sha":"b9c3d01..."}'
+# 404
+# {"message": "Not Found"}
+# ```
+#
+# **And no test noticed, because the double answers every `PUT` with a merge** — on the method and
+# not on the address. So every property of this request was asserted somewhere except the one that
+# decides whether the merge can happen at all.
+WHERE_GITHUB_TAKES_A_MERGE = "/repos/{owner}/{name}/pulls/{number}/merge"
 SECONDS_A_READ_MAY_TAKE = 10
 SECONDS_A_MERGE_MAY_TAKE = 30
 
@@ -256,7 +278,7 @@ def _the_merge_github_performed(
     three different problems and this system cannot tell them apart from the prose.
     """
     answer = client.put(
-        WHERE_GITHUB_KEEPS_THE_PULL_REQUEST.format(
+        WHERE_GITHUB_TAKES_A_MERGE.format(
             owner=wanted.repository.owner, name=wanted.repository.name, number=wanted.number
         ),
         json={"sha": wanted.the_commit_a_merge_may_land},
