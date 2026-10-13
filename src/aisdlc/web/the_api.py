@@ -29,6 +29,12 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from aisdlc.agents.brief_this_repository import Brief
+from aisdlc.application.a_filing_being_worked import (
+    AFiledWorkItemThatIsAlreadyDoneError,
+    NotAFiledWorkItemError,
+    a_filed_work_item_to_start,
+    the_ready_filings,
+)
 from aisdlc.application.a_run_being_assembled import ThisRunCannotBeAssembledError
 from aisdlc.application.the_runs_this_process_is_holding import (
     AWorkItemIsAlreadyBeingHeldError,
@@ -70,7 +76,7 @@ from aisdlc.store.the_record_of_a_run import (
     the_notes_on_the_card,
     what_the_gate_was_asking_about,
 )
-from aisdlc.store.the_register_of_work_items import the_work_item_registered_at
+from aisdlc.store.the_register_of_work_items import NoSuchWorkItemError, the_work_item_registered_at
 from aisdlc.store.what_a_run_records import something_the_run_said
 from aisdlc.store.where_the_register_lives import (
     holding_the_register,
@@ -431,6 +437,71 @@ def the_api_over(
             "artifact_id": the_question[0],
             "artifact_version": the_question[1],
             "approved": the_decision.approved,
+        }
+
+    @the_app.get("/api/filings/ready")
+    @the_endpoint_touches_the_register
+    def the_filings_waiting_to_be_worked() -> dict[str, object]:
+        """Every filed work item still waiting for a run, so a loop can work them one by one.
+
+        **Filed and at `READY`, and nothing else.** A work item past `READY` already has a
+        graph walking it or a decision behind it; offering it here would invite a second run
+        for one filing. A briefing files issues and this is where they wait until somebody —
+        a person pressing start or a loop working the queue — picks them up.
+        """
+        the_waiting = the_ready_filings()
+        return {
+            "filings": [
+                {
+                    "work_item_id": the_filing.work_item_id,
+                    "repository": the_filing.repository.address,
+                    "title": the_filing.requested.title if the_filing.requested else "",
+                    "issue_number": the_filing.requested.filed_as.number
+                    if the_filing.requested and the_filing.requested.filed_as
+                    else None,
+                    "issue_address": the_filing.requested.filed_as.address
+                    if the_filing.requested and the_filing.requested.filed_as
+                    else None,
+                }
+                for the_filing in the_waiting
+            ]
+        }
+
+    @the_app.post("/api/runs/{work_item_id}/start")
+    def a_filed_run_was_started(work_item_id: str) -> dict[str, object]:
+        """Start the run a briefing's filing commissioned, and walk it like any other run.
+
+        **The work item already exists; this starts it rather than commissioning one.** Filing
+        put a card at `READY` carrying GitHub's own issue number and address. Starting it here
+        walks the same graph a sentence-typed run walks — the same eight gates, the same
+        delivery, the same merge of the commit the suite went green on — with the branch named
+        after the filing and the pull request body carrying `Closes #N`, so the merge closes
+        the issue it answers.
+        """
+        try:
+            the_work_item = a_filed_work_item_to_start(work_item_id)
+        except NotAFiledWorkItemError as not_filed:
+            raise HTTPException(status_code=400, detail=str(not_filed)) from not_filed
+        except AFiledWorkItemThatIsAlreadyDoneError as already_done:
+            raise HTTPException(status_code=400, detail=str(already_done)) from already_done
+        except NoSuchWorkItemError as no_such_work:
+            raise HTTPException(status_code=404, detail=str(no_such_work)) from no_such_work
+
+        something_the_run_said(the_work_item.work_item_id, "a filing was picked up to be worked")
+
+        try:
+            the_runs.a_run_was_started(the_work_item, where_projects_live())
+        except AWorkItemIsAlreadyBeingHeldError as already_running:
+            raise HTTPException(status_code=409, detail=str(already_running)) from already_running
+        except ThisRunCannotBeAssembledError as cannot:
+            raise HTTPException(status_code=503, detail=str(cannot)) from cannot
+
+        return {
+            "work_item_id": the_work_item.work_item_id,
+            "repository": the_work_item.repository.address,
+            "issue_number": the_work_item.requested.filed_as.number
+            if the_work_item.requested and the_work_item.requested.filed_as
+            else None,
         }
 
     @the_app.post("/api/briefings")

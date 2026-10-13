@@ -83,6 +83,28 @@ def test_a_refusal_that_names_a_real_ground_is_untouched() -> None:
     assert a_judgement.approved is False
 
 
+def test_grounds_naming_a_placeholder_value_mid_sentence_are_untouched() -> None:
+    """The property the test above promised and never checked, paid for by a real run.
+
+    **Sixty-five verdicts, thirty-four minutes, one word.** A run commissioned for an issue
+    about a placeholder test produced grounds its model could only word with *placeholder* in
+    them — `flags the placeholder assertion` — and the correction loop refused every one,
+    because the word was matched inside the sentence. The string below is the one from the
+    register, not a paraphrase: an approval naming the placeholder mid-sentence must pass.
+    """
+    a_judgement = WhatAPolicyJudged(
+        approved=True,
+        reason=(
+            "The DiscoveryReport is grounded and actionable: it cites "
+            "tests/integration/plane.int.test.ts and flags the placeholder assertion, with "
+            "supporting evidence links for the test, CI, and Playwright harness. The suggested "
+            "changes are specific, so the run has enough to continue."
+        ),
+    )
+
+    assert a_judgement.approved is True
+
+
 def test_a_grounds_field_saying_it_is_unfinished_is_still_a_refusal_to_read() -> None:
     """The boundary, stated as a property rather than as a word list.
 
