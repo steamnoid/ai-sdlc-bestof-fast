@@ -21,6 +21,7 @@ behaviour a version happened to have.
 from __future__ import annotations
 
 import os
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -109,6 +110,19 @@ class APolicyAnsweredWithSomethingUnusableError(Exception):
 # policy explaining itself.
 ANY_WORD_THAT_ANNOUNCES_UNFINISHED_BUSINESS = "placeholder"
 
+# **One shape, and only the shape that has been seen, because a grounds field that may not
+# contain words is a list of banned words.** A real policy refused a real discovery report —
+# twenty-two evidence files, the placeholder test named among them — with `Reviewing the
+# DiscoveryReport before ruling.` That narrates the act of reviewing and defers the ruling the
+# field exists to give, so a run ended on a verdict with nothing behind it and nobody could say
+# whether the report or the policy was wrong. The match is the whole reason and not words inside
+# it: honest grounds may well say they reviewed something, and a rule matching *reviewing*
+# anywhere would stop a policy explaining itself. What is refused is a reason that *is* the
+# deferral and nothing else.
+ANY_DEFERRAL_OF_THE_RULING_ITSELF = re.compile(
+    r"reviewing\s+.+\s+before\s+(ruling|deciding)\.?$", re.IGNORECASE
+)
+
 
 class WhatAPolicyJudged(BaseModel):
     """The RED shell: grounds, not a verdict. The rules come with the implementation.
@@ -165,6 +179,16 @@ class WhatAPolicyJudged(BaseModel):
                 "Say what made you refuse and what would change it: name the artifact, the claim "
                 "you doubt, and what evidence would settle it. 'Placeholder pending policy "
                 "retrieval' reads as an answer and is actionable by nobody."
+            )
+
+        if ANY_DEFERRAL_OF_THE_RULING_ITSELF.match(reason.strip()):
+            raise ValueError(
+                f"{reason!r} narrates reviewing and defers the ruling, so it is not grounds. "
+                "**A policy that says it is still reviewing has not ruled**, and the correction "
+                "loop will spend its next turn on that.\n\n"
+                "Say what you found and what would change it: name the artifact, the claim you "
+                "doubt, and what evidence would settle it. 'Reviewing the report before ruling' "
+                "reads as an answer and is actionable by nobody."
             )
 
         return reason

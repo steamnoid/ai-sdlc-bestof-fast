@@ -1640,7 +1640,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships thirty-nine test files, and each one
+  end-to-end tests were not copied. This repository ships forty test files, and each one
   is a claim rather than a category:
 
   | file | what it holds this repository to |
@@ -1698,6 +1698,7 @@ Stated rather than left to be discovered.
   | `test_every_declared_neighbouring_pair_has_a_case.py` | that every two agents the pipeline runs back to back have a pair test, and that the order those pairs are cut from is the router's own order rather than a list somebody typed |
   | `test_every_stage_that_reasons_about_files_is_shown_them.py` | that no stage is handed a directory listing and then writes findings about files nobody in it has read |
   | `test_a_filing_being_worked.py` | that a filing a briefing commissioned can be picked up and worked, that anything else is refused by name, and that a filed delivery body closes the issue it answers |
+  | `test_grounds_that_narrate_reviewing_instead_of_ruling.py` | that a policy's grounds narrating review instead of ruling are refused at the shape — the sixth instance of a value shaped like an answer and carrying none — while grounds saying what was reviewed and found are untouched |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Every one of the twenty-one is newer than the assembly this repository was cut
