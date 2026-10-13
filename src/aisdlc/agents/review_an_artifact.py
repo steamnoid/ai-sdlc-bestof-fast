@@ -104,10 +104,14 @@ class APolicyAnsweredWithSomethingUnusableError(Exception):
 # is the sentence a real policy answered with, which is the whole of what one gate said. `TODO` and
 # `TBD` belong to the same class; **they are added when a run produces them, and not before.**
 #
-# **Lower case, and compared against the reason lowered**, so the check cannot be defeated by a
-# capital letter — and the word is matched inside the sentence rather than as the sentence, because
-# a real ground may describe a placeholder value being replaced and refusing that would stop the
-# policy explaining itself.
+# **At the start, and not anywhere inside, because a real ground may name a placeholder
+# value mid-sentence and this rule used to refuse that.** The word was matched inside the
+# sentence, and the sentence defending it said a rule refusing honest grounds would stop the
+# policy explaining itself — while the test beside it never contained the word at all. Then a
+# real run about a placeholder test produced sixty-five verdicts the model could only word
+# with the word *placeholder* in them, and the correction loop burned thirty-four minutes
+# refusing every one: `flags the placeholder assertion` *calls* nothing itself anything. What
+# the seen sentence does is *begin* with the announcement, so the match is the start.
 ANY_WORD_THAT_ANNOUNCES_UNFINISHED_BUSINESS = "placeholder"
 
 # **One shape, and only the shape that has been seen, because a grounds field that may not
@@ -171,7 +175,9 @@ class WhatAPolicyJudged(BaseModel):
                 "be questioned is not a decision"
             )
 
-        if ANY_WORD_THAT_ANNOUNCES_UNFINISHED_BUSINESS in reason.lower():
+        if re.match(
+            rf"{ANY_WORD_THAT_ANNOUNCES_UNFINISHED_BUSINESS}\b", reason.strip(), re.IGNORECASE
+        ):
             raise ValueError(
                 f"{reason!r} calls itself a placeholder, so it is not grounds. **A policy that "
                 "says it will say why later has not said why**, and the correction loop will "
