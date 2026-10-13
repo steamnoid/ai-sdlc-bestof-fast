@@ -75,6 +75,9 @@ ignore = ["D203", "D213"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "ANN", "S101", "PLR2004", "SLF001", "S603", "S607"]
 "src/aisdlc/tools/run_command.py" = ["S603"]
+# `docker info` as a preflight warning: the executable is resolved through `shutil.which`
+# and the arguments are two literals this file wrote, so no untrusted input reaches the call.
+"src/aisdlc/cli.py" = ["S603"]
 # `S608` asks whether a value reached a query as text rather than as a bound parameter, and the
 # answer here is that no value ever does. Every query interpolates `_THE_WORK_ITEM_COLUMNS`,
 # which is a module constant listing column names this file wrote, and every value a caller

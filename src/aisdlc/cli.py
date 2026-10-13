@@ -52,6 +52,36 @@ def _open_the_register() -> None:
     the_register_lives_at(where_the_register_should_live())
 
 
+def _warn_when_docker_is_down() -> None:
+    """Say when no container will run, before a run spends gates finding out.
+
+    **A warning and not a refusal.** The first six gates are reasoning and need no
+    container; only verification does. A run started without Docker still produces six
+    reviewed artifacts before `NoDockerError` stops it at the change — which is exactly
+    what that refusal is for. This names the fact early so a forty-minute run does not
+    discover it at minute thirty-nine.
+    """
+    import shutil
+    import subprocess
+
+    the_docker = shutil.which("docker")
+    if the_docker is None:
+        typer.echo("warning: docker is not on PATH, so verification will refuse with NoDockerError")
+        return
+    try:
+        answered = subprocess.run(
+            [the_docker, "info"],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except Exception:
+        typer.echo("warning: docker did not answer, so verification will refuse with NoDockerError")
+        return
+    if answered.returncode != 0:
+        typer.echo("warning: docker is down, so verification will refuse with NoDockerError")
+
+
 @aisdlc.command()
 def serve(port: int = THE_PORT_THIS_SERVES_ON_BY_DEFAULT) -> None:
     """The board, in a browser, at http://127.0.0.1:<port>.
@@ -124,11 +154,118 @@ def run(
     the_config = a_config(the_work_item_id)
     the_project_directory = the_project_directory_of(the_work_item, the_projects_root)
 
+    _warn_when_docker_is_down()
+
     typer.echo(f"{the_work_item_id} · {the_repository.address}")
     typer.echo(f"everything this run writes goes in {the_project_directory}")
     typer.echo("")
 
     _walk(the_graph, the_config, the_work_item_id, the_work_item, the_project_directory)
+
+
+@aisdlc.command()
+def work(
+    work_item_id: str = typer.Argument(..., help="The filed work item to walk, e.g. issue-7-...."),
+) -> None:
+    """Walk a filing a briefing commissioned, asking you at each of the eight gates.
+
+    **The work item already exists; this starts it rather than commissioning one.** A
+    briefing files an issue and leaves a card at `READY` carrying GitHub's own issue number.
+    This walks that card's run — the same graph, the same gates, the same delivery with a
+    `Closes #N` footer, so the merge closes the issue it answers.
+    """
+    _open_the_register()
+    _warn_when_docker_is_down()
+
+    from aisdlc.application.a_filing_being_worked import a_filed_work_item_to_start
+
+    try:
+        the_work_item = a_filed_work_item_to_start(work_item_id)
+    except Exception as it_could_not_start:
+        typer.echo(f"this filing cannot be worked: {it_could_not_start}")
+        raise typer.Exit(code=2) from None
+
+    try:
+        the_graph = the_graph_for(the_work_item.repository)
+    except ThisRunCannotBeAssembledError as cannot:
+        typer.echo(f"this run cannot start: {cannot}")
+        raise typer.Exit(code=2) from None
+
+    the_config = a_config(the_work_item.work_item_id)
+    the_project_directory = the_project_directory_of(
+        the_work_item, where_projects_live()
+    )
+
+    typer.echo(f"{the_work_item.work_item_id} · {the_work_item.repository.address}")
+    typer.echo(f"everything this run writes goes in {the_project_directory}")
+    typer.echo("")
+
+    _walk(
+        the_graph,
+        the_config,
+        the_work_item.work_item_id,
+        the_work_item,
+        the_project_directory,
+    )
+
+
+@aisdlc.command(name="work-ready")
+def work_ready(
+    repository: str = typer.Option(
+        "", "--repository", help="Only filings for owner/name; empty means every repository."
+    ),
+) -> None:
+    """Start every filed work item still waiting, under the deployment's approval policy.
+
+    **Autopilot only.** Without `AISDLC_APPROVAL_POLICY` a started run parks at its first
+    gate with nobody listening in this process — the board in another process holds no
+    graph to resume. So this refuses without a policy and tells you to walk one filing
+    with `aisdlc work <id>` or start the board instead. With a policy each run walks to
+    `DONE` (or to a refusal) in a thread of its own, and this command waits for all of
+    them rather than exiting while daemon threads are still walking.
+    """
+    import time
+
+    _open_the_register()
+    _warn_when_docker_is_down()
+
+    from aisdlc.agents.review_an_artifact import the_policy_a_deployment_stated
+    from aisdlc.application.a_filing_being_worked import the_ready_filings
+
+    if the_policy_a_deployment_stated() is None:
+        typer.echo(
+            "no approval policy is stated, so started runs would park at a gate nobody here "
+            "listens at. Walk one filing with `aisdlc work <id>`, or start the board and "
+            "answer there."
+        )
+        raise typer.Exit(code=2) from None
+
+    the_filings = the_ready_filings()
+    if repository.strip():
+        wanted = _a_repository_from(repository)
+        the_filings = [item for item in the_filings if item.repository == wanted]
+
+    if not the_filings:
+        typer.echo("nothing filed and waiting.")
+        return
+
+    the_runs = TheRunsThisProcessIsHolding()
+    started = 0
+    for the_work_item in the_filings:
+        try:
+            the_runs.a_run_was_started(the_work_item, where_projects_live())
+        except Exception as already:
+            typer.echo(f"  {the_work_item.work_item_id}: skipped ({already})")
+            continue
+        typer.echo(f"  {the_work_item.work_item_id}: started")
+        started += 1
+
+    while any(
+        the_runs.is_this_run_still_walking(item.work_item_id) for item in the_filings
+    ):
+        time.sleep(1.0)
+
+    typer.echo(f"{started} started, all parked or finished. Read the board for where each stands.")
 
 
 @aisdlc.command()

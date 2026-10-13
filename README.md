@@ -45,6 +45,19 @@ A run in a terminal instead, with the gates in your own shell:
 uv run aisdlc run paligakrzychu/wellbeing-tracker-public "add a /health endpoint"
 ```
 
+The autonomous loop instead: a briefing files issues, and each filing is worked to a pull
+request whose merge closes the issue it answers:
+
+```bash
+AISDLC_CREATIVE_MODE=on uv run aisdlc brief steamnoid/wellbeing-tracker-public
+uv run aisdlc work issue-41-replace-the-ticket-named-specs   # one filing, gates in your shell
+AISDLC_APPROVAL_POLICY=review-what-the-run-found uv run aisdlc work-ready   # every filing, unattended
+```
+
+`work-ready` refuses without an approval policy, because a started run would park at a gate
+nobody in that process listens at. The board's `GET /api/filings/ready` lists the same queue,
+and `POST /api/runs/{id}/start` starts one of them.
+
 ### Configuration
 
 A run needs a model, and the deployment says which:
@@ -1627,7 +1640,7 @@ Stated rather than left to be discovered.
   reading the source, and the first is fixed. The third was found by looking at a real card, which
   is `on __interrupt__`.
 - **Every unit and graph test the engine had.** Its 686 unit tests, 150 graph tests and 45
-  end-to-end tests were not copied. This repository ships thirty-eight test files, and each one
+  end-to-end tests were not copied. This repository ships thirty-nine test files, and each one
   is a claim rather than a category:
 
   | file | what it holds this repository to |
@@ -1684,6 +1697,7 @@ Stated rather than left to be discovered.
   | `test_every_finding_is_held_to_saying_something.py` | that every finding this pipeline produces names the field it cannot leave empty, and that those fields exist on the model, so an empty artifact cannot be read as an answer |
   | `test_every_declared_neighbouring_pair_has_a_case.py` | that every two agents the pipeline runs back to back have a pair test, and that the order those pairs are cut from is the router's own order rather than a list somebody typed |
   | `test_every_stage_that_reasons_about_files_is_shown_them.py` | that no stage is handed a directory listing and then writes findings about files nobody in it has read |
+  | `test_a_filing_being_worked.py` | that a filing a briefing commissioned can be picked up and worked, that anything else is refused by name, and that a filed delivery body closes the issue it answers |
 
   The engine's own suite is where the per-agent contracts are proven, and it still exists in
   `ai-sdlc-os`. **Every one of the twenty-one is newer than the assembly this repository was cut
